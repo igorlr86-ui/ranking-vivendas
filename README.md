@@ -9,6 +9,7 @@ Ranking individual de beach tennis do Vivendas da Mata: grupos da semana, lança
 - **Sorteio:** toda segunda-feira às 14h (Brasília), a rede pública [drand](https://drand.love) (League of Entropy, rede *quicknet*) divulga um número aleatório assinado. Os grupos da semana saem desse número, com uma conta que qualquer pessoa pode refazer na aba **Sorteio** da página. Ninguém da organização escolhe nem consegue prever o resultado.
 - **Formato:** Feminino e Masculino em grupos de 4, com 3 jogos trocando as duplas; Mista em grupos de 2 homens + 2 mulheres, com 2 jogos. Os jogos do grupo podem ser feitos em qualquer ordem.
 - **Sem repetir:** a partir da semana de 26/10/2026, o sorteio evita colocar no mesmo grupo quem já jogou junto na mesma categoria. Quando isso deixar de ser possível, escolhe a combinação com menos repetições. Na Mista, quem folgou menos vezes tem a vez de folgar.
+- **Acesso:** no primeiro acesso cada jogador cria o próprio código de 4 números. Se alguém criar no nome de outra pessoa, a organização apaga o código na planilha e a pessoa cria de novo.
 - **Placar:** quem ganhou lança; um dos que perderam confirma (ou contesta). Só conta jogo confirmado. Se ninguém confirmar até domingo às 20h, vale o placar lançado (regra configurável na aba *Config* da planilha: `sem_validacao` = `aceitar` ou `pendente`).
 - **Pontos:** vitória 10, derrota 5, participação 2, +1 por game ganho. Desempate: vitórias, games ganhos, saldo de games, jogos disputados.
 

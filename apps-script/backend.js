@@ -228,7 +228,7 @@ function doGet(e) {
       ranking: ranking_(st.jogos),
       proximo: weekMeta_(nextStart),
       regras: { sem_validacao: st.cfg.sem_validacao || "aceitar" },
-      jogadores: jogadores_().map(function (p) { return { nome: p.nome, sexo: p.sexo, categorias: p.categorias }; })
+      jogadores: jogadores_().map(function (p) { return { nome: p.nome, sexo: p.sexo, categorias: p.categorias, temCodigo: !!p.codigo }; })
     });
   } catch (err) { return json_({ ok: false, erro: String(err && err.message || err) }); }
 }
@@ -248,14 +248,37 @@ function autenticar_(nome, codigo) {
     if (codigo && codigo === norm_(cfg.codigo_organizacao)) return { nome: nome, admin: true };
   } else {
     var p = jogadores_().filter(function (x) { return x.nome === nome; })[0];
+    if (p && !p.codigo) throw new Error("Este nome ainda não tem código. Crie o seu no primeiro acesso.");
     if (p && codigo && codigo === p.codigo) return { nome: nome, admin: false };
   }
   cache.put(key, String(falhas + 1), 900);
   throw new Error("Nome ou código não confere.");
 }
+/* ---- primeiro acesso: o próprio jogador cria o código (só se ainda não houver um) ---- */
+function criarCodigo_(nome, codigo) {
+  nome = norm_(nome); codigo = norm_(codigo);
+  if (!/^[0-9]{4}$/.test(codigo)) throw new Error("O código precisa ter exatamente 4 números.");
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = jogadoresSheet_(), v = sh.getDataRange().getValues(), head = v[0].map(String);
+    var iNome = head.indexOf("Jogador"), iCod = head.indexOf("Código");
+    for (var r = 1; r < v.length; r++) {
+      if (norm_(v[r][iNome]) !== nome) continue;
+      if (norm_(cell_("Código", v[r][iCod]))) throw new Error("Este nome já tem código. Se não foi você que criou, fale com a organização.");
+      sh.getRange(r + 1, iCod + 1).setValue("'" + codigo);
+      var ci = head.indexOf("Código criado em");
+      if (ci < 0) { ci = head.length; sh.getRange(1, ci + 1).setValue("Código criado em").setFontWeight("bold"); }
+      sh.getRange(r + 1, ci + 1).setValue("'" + new Date().toISOString());
+      SpreadsheetApp.flush();
+      return { ok: true, nome: nome };
+    }
+    throw new Error("Nome não encontrado na lista de jogadores.");
+  } finally { lock.releaseLock(); }
+}
 function doPost(e) {
   try {
     var req = JSON.parse(e.postData.contents || "{}");
+    if (req.acao === "criar_codigo") return json_(criarCodigo_(req.nome, req.codigo));
     var who = autenticar_(req.nome, req.codigo);
     if (req.acao === "entrar") return json_({ ok: true, nome: who.nome, admin: who.admin });
     var lock = LockService.getScriptLock();

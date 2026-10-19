@@ -153,13 +153,25 @@
       + "<p>Com <b>" + esc(partner) + "</b> contra " + names(opp) + "</p>" + body + "</article>";
   }
   function renderLogin() {
-    var opts = (S.data.jogadores || []).map(function (p) { return p.nome; }).sort(function (a, b) { return a.localeCompare(b, "pt-BR"); });
-    return '<section class="panel"><h2>Entrar</h2><p class="muted">Escolha seu nome e digite o código pessoal que a organização mandou no seu WhatsApp. Este aparelho guarda o acesso.</p>'
+    var js = (S.data.jogadores || []).slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, "pt-BR"); });
+    var sel = S.loginNome || "", p = js.filter(function (x) { return x.nome === sel; })[0];
+    var criar = p && !p.temCodigo;
+    var html = '<section class="panel"><h2>Entrar</h2><p class="muted">Escolha seu nome. No primeiro acesso, você cria um código de 4 números; depois é só usar esse código. Este aparelho guarda o acesso.</p>'
       + '<form id="login" class="stack" style="gap:12px"><div class="field"><label for="lnome">Seu nome</label><select id="lnome" required><option value="">Escolha…</option>'
-      + opts.map(function (n) { return '<option>' + esc(n) + "</option>"; }).join("") + '<option value="Organização">Organização</option></select></div>'
-      + '<div class="field"><label for="lcod">Código pessoal</label><input id="lcod" type="password" inputmode="numeric" autocomplete="off" maxlength="8" required></div>'
-      + (S.loginErr ? '<div class="err">' + esc(S.loginErr) + "</div>" : "")
-      + '<button class="btn" type="submit"' + (S.busy ? " disabled" : "") + ">Entrar</button></form></section>";
+      + js.map(function (x) { return '<option' + (x.nome === sel ? " selected" : "") + ">" + esc(x.nome) + "</option>"; }).join("")
+      + '<option value="Organização"' + (sel === "Organização" ? " selected" : "") + '>Organização</option></select></div>';
+    if (sel && criar) {
+      html += '<div class="info"><b>Primeiro acesso.</b> Crie um código de 4 números e guarde. Ele é só seu: com ele você lança e confirma placares.</div>'
+        + '<div class="field"><label for="lcod">Crie seu código</label><input id="lcod" type="password" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" required></div>'
+        + '<div class="field"><label for="lcod2">Repita o código</label><input id="lcod2" type="password" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" required></div>';
+    } else if (sel) {
+      html += '<div class="field"><label for="lcod">' + (sel === "Organização" ? "Código da organização" : "Seu código") + '</label><input id="lcod" type="password" inputmode="numeric" autocomplete="off" maxlength="8" required></div>'
+        + (sel !== "Organização" ? '<p class="small muted">Esqueceu o código ou não foi você que criou? Fale com a organização.</p>' : "");
+    }
+    html += (S.loginErr ? '<div class="err">' + esc(S.loginErr) + "</div>" : "")
+      + (sel ? '<button class="btn" type="submit"' + (S.busy ? " disabled" : "") + ">" + (criar ? "Criar código e entrar" : "Entrar") + "</button>" : "")
+      + "</form></section>";
+    return html;
   }
   function renderLancar() {
     if (!S.me) return renderLogin();
@@ -265,14 +277,25 @@
       act({ acao: a, jogo: k, lado1: l1, lado2: l2 }, a === "lancar" ? "Placar enviado. Agora um dos adversários confirma." : a === "contestar" ? "Contestação enviada à organização." : "Placar definido.").then(function () { delete S.forms[k]; render(); });
     }
   });
+  document.addEventListener("change", function (e) {
+    if (e.target.id === "lnome") { S.loginNome = e.target.value; S.loginErr = null; render(); var c = $("#lcod"); if (c) c.focus(); }
+  });
   document.addEventListener("submit", function (e) {
     if (e.target.id !== "login") return;
     e.preventDefault();
-    var nome = $("#lnome").value, codigo = $("#lcod").value.trim();
+    var nome = $("#lnome").value, codigo = ($("#lcod") ? $("#lcod").value : "").trim(), c2 = $("#lcod2");
     if (!nome || !codigo) return;
+    var first = Promise.resolve();
+    if (c2) {
+      if (!/^[0-9]{4}$/.test(codigo)) { S.loginErr = "O código precisa ter exatamente 4 números."; render(); return; }
+      if (c2.value.trim() !== codigo) { S.loginErr = "Os dois códigos não são iguais. Digite de novo."; render(); return; }
+      first = post({ acao: "criar_codigo", nome: nome, codigo: codigo });
+    }
     S.busy = true; S.loginErr = null; render();
-    post({ acao: "entrar", nome: nome, codigo: codigo }).then(function (d) {
-      S.me = { nome: d.nome, codigo: codigo, admin: !!d.admin }; saveMe(); toast("Tudo certo, " + d.nome.split(" ")[0] + "!");
+    first.then(function () { return post({ acao: "entrar", nome: nome, codigo: codigo }); }).then(function (d) {
+      S.me = { nome: d.nome, codigo: codigo, admin: !!d.admin }; saveMe(); S.loginNome = null;
+      toast(c2 ? "Código criado. Bem-vindo(a), " + d.nome.split(" ")[0] + "!" : "Tudo certo, " + d.nome.split(" ")[0] + "!");
+      if (c2) load();
     }).catch(function (err) { S.loginErr = err.message; }).then(function () { S.busy = false; render(); });
   });
 
