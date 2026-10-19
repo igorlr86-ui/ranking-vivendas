@@ -223,7 +223,7 @@
     renderTabs();
     var m = $("#main");
     if (S.err && !S.data) { m.innerHTML = '<div class="err">' + esc(S.err) + "</div>"; return; }
-    if (!S.data) { m.innerHTML = '<div class="loading">Carregando…</div>'; return; }
+    if (!S.data) { m.innerHTML = '<div class="loading">Carregando o ranking… pode levar alguns segundos.</div>'; return; }
     var html = S.err ? '<div class="err">' + esc(S.err) + "</div>" : "";
     if (S.tab === "semana") html += renderSemana();
     else if (S.tab === "ranking") html += renderRanking();

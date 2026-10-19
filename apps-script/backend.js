@@ -25,13 +25,24 @@ function sheet_(name, header) {
   }
   return sh;
 }
+// O Google Planilhas converte sozinho textos que parecem data ou número.
+// Na escrita, todo valor vai como texto (prefixo '); na leitura, datas convertidas voltam ao formato original.
+var DATE_ONLY_COLS = { id: true, semana: true };
+function cell_(h, v) {
+  if (v === null || v === undefined) return "";
+  if (Object.prototype.toString.call(v) === "[object Date]") {
+    return DATE_ONLY_COLS[h] ? Utilities.formatDate(v, ss_().getSpreadsheetTimeZone(), "yyyy-MM-dd") : v.toISOString();
+  }
+  return String(v);
+}
 function rows_(sh) {
   var v = sh.getDataRange().getValues();
   var head = v.shift().map(String);
   return v.filter(function (r) { return r.join("") !== ""; }).map(function (r) {
-    var o = {}; head.forEach(function (h, i) { o[h] = r[i] === null || r[i] === undefined ? "" : String(r[i]); }); return o;
+    var o = {}; head.forEach(function (h, i) { o[h] = cell_(h, r[i]); }); return o;
   });
 }
+function append_(sh, arr) { sh.appendRow(arr.map(function (x) { return "'" + (x === null || x === undefined ? "" : String(x)); })); }
 var SEMANAS_HEAD = ["id", "inicio", "prazo", "metodo", "rodada", "randomness", "assinatura", "listas", "sorteio", "criado_em"];
 var PLACARES_HEAD = ["quando", "semana", "categoria", "grupo", "jogo", "acao", "jogador", "lado", "games_lado1", "games_lado2", "obs"];
 function semanasSheet_() { return sheet_("Semanas", SEMANAS_HEAD); }
@@ -72,10 +83,10 @@ function setup() {
   jog.getRange("C:C").setNumberFormat("@");
   semanasSheet_(); placaresSheet_();
   var cfg = config_(), cs = configSheet_();
-  if (!cfg.codigo_organizacao) cs.appendRow(["codigo_organizacao", String(100000 + Math.floor(Math.random() * 900000))]);
-  if (!cfg.sem_validacao) cs.appendRow(["sem_validacao", "aceitar"]);
+  if (!cfg.codigo_organizacao) append_(cs, ["codigo_organizacao", String(100000 + Math.floor(Math.random() * 900000))]);
+  if (!cfg.sem_validacao) append_(cs, ["sem_validacao", "aceitar"]);
   if (SEMANA_1 && !rows_(semanasSheet_()).some(function (r) { return r.id === SEMANA_1.id; })) {
-    semanasSheet_().appendRow([SEMANA_1.id, SEMANA_1.inicio, SEMANA_1.prazo, "v1", String(SEMANA_1.rodada), SEMANA_1.randomness, SEMANA_1.assinatura,
+    append_(semanasSheet_(), [SEMANA_1.id, SEMANA_1.inicio, SEMANA_1.prazo, "v1", String(SEMANA_1.rodada), SEMANA_1.randomness, SEMANA_1.assinatura,
       JSON.stringify(SEMANA_1.listas), JSON.stringify(SEMANA_1.sorteio), new Date().toISOString()]);
   }
   SpreadsheetApp.flush();
@@ -137,7 +148,7 @@ function sorteioSeDevido_() {
     var week = { method: "v2", lists: lists, randomness: b.randomness };
     var d = Sorteio.drawV2(b.randomness, lists, weeks.filter(function (w) { return w.id < meta.id; }));
     var plain = {}; CATS.forEach(function (c) { plain[c] = { groups: d[c].groups, byes: d[c].byes }; });
-    semanasSheet_().appendRow([meta.id, meta.inicio, meta.prazo, "v2", String(meta.rodada), b.randomness, b.signature,
+    append_(semanasSheet_(), [meta.id, meta.inicio, meta.prazo, "v2", String(meta.rodada), b.randomness, b.signature,
       JSON.stringify(lists), JSON.stringify(plain), new Date().toISOString()]);
     SpreadsheetApp.flush();
     return meta.id;
@@ -254,7 +265,7 @@ function doPost(e) {
       if (!j) throw new Error("Jogo não encontrado.");
       var parts = j.key.split("|"), now = st.now;
       var row = function (acao, lado, a, b, obs) {
-        placaresSheet_().appendRow([new Date(now).toISOString(), parts[0], parts[1], parts[2], parts[3], acao, who.nome, String(lado || ""), String(a === null ? "" : a), String(b === null ? "" : b), obs || ""]);
+        append_(placaresSheet_(), [new Date(now).toISOString(), parts[0], parts[1], parts[2], parts[3], acao, who.nome, String(lado || ""), String(a === null ? "" : a), String(b === null ? "" : b), obs || ""]);
       };
       var placar = function () {
         var a = Number(req.lado1), b = Number(req.lado2);
