@@ -1,0 +1,223 @@
+{
+ "id": "2026-10-19",
+ "inicio": "2026-10-19T17:00:00.000Z",
+ "prazo": "2026-10-25T23:00:00.000Z",
+ "rodada": 33208612,
+ "randomness": "8086b0b8cc48275b770f47a24324a43f64ab0369bb73cdf7fe8c88b918bf44ba",
+ "assinatura": "b917b9e20aa064ecbd02e2e0647a20d44345ae7786d6c00246fd23305ed712ef6da425b6d3a28da54f604b66ce6d29c9",
+ "listas": {
+  "Feminino": [
+   "Maria Eduarda Barbieri",
+   "Fernanda Galhardo",
+   "Camila Correa",
+   "Bruna",
+   "Patricia",
+   "Juliana Souza",
+   "Júlia Contin",
+   "Marcela Fiacadori",
+   "Andressa",
+   "Luisa",
+   "Maisa",
+   "Lina",
+   "Daniela",
+   "Victoria de Castro",
+   "Gabi Pires",
+   "Alicia",
+   "Jackeline",
+   "Camila Zorzetto",
+   "Kelem Vilela"
+  ],
+  "Masculino": [
+   "Danilo Coqueli",
+   "Marcone Gomes",
+   "Igor Rodrigues",
+   "Doug",
+   "Filipe",
+   "Rafael",
+   "Guide",
+   "Jhonatan",
+   "Edu",
+   "Marcos Bermudes",
+   "Alexandre",
+   "Gabriel Zanato",
+   "Kelner Teodoro",
+   "William",
+   "Evandro",
+   "Marcelo",
+   "Renan",
+   "Mau Pedrosa",
+   "Thiago",
+   "Cassiano",
+   "João Pedro Gomes",
+   "Cristiano Cotrim",
+   "André Bueno",
+   "Guilherme Morais"
+  ],
+  "MistaMulheres": [
+   "Fernanda Galhardo",
+   "Maria Eduarda Barbieri",
+   "Camila Correa",
+   "Bruna",
+   "Juliana Souza",
+   "Júlia Contin",
+   "Marcela Fiacadori",
+   "Andressa",
+   "Luisa",
+   "Maiza",
+   "Lina",
+   "Gabi Pires",
+   "Alicia",
+   "Jackeline"
+  ],
+  "MistaHomens": [
+   "Igor Rodrigues",
+   "Danilo Coqueli",
+   "Marcone Gomes",
+   "Doug",
+   "Filipe",
+   "Rafael",
+   "Guide",
+   "Alexandre",
+   "Edu",
+   "Marcos Bermudes",
+   "Gabriel Zanato",
+   "Kelner Teodoro",
+   "William",
+   "Evandro",
+   "Marcelo",
+   "Mau Pedrosa",
+   "João Pedro Gomes",
+   "André Bueno",
+   "Cristiano Cotrim"
+  ]
+ },
+ "sorteio": {
+  "Feminino": {
+   "groups": [
+    [
+     "Jackeline",
+     "Maisa",
+     "Juliana Souza",
+     "Kelem Vilela"
+    ],
+    [
+     "Camila Correa",
+     "Júlia Contin",
+     "Lina",
+     "Daniela"
+    ],
+    [
+     "Gabi Pires",
+     "Fernanda Galhardo",
+     "Camila Zorzetto",
+     "Andressa"
+    ],
+    [
+     "Luisa",
+     "Victoria de Castro",
+     "Bruna",
+     "Marcela Fiacadori"
+    ]
+   ],
+   "byes": [
+    "Patricia",
+    "Maria Eduarda Barbieri",
+    "Alicia"
+   ]
+  },
+  "Masculino": {
+   "groups": [
+    [
+     "Cassiano",
+     "Rafael",
+     "Evandro",
+     "Edu"
+    ],
+    [
+     "Kelner Teodoro",
+     "Thiago",
+     "Marcos Bermudes",
+     "João Pedro Gomes"
+    ],
+    [
+     "William",
+     "Guilherme Morais",
+     "André Bueno",
+     "Guide"
+    ],
+    [
+     "Igor Rodrigues",
+     "Marcone Gomes",
+     "Filipe",
+     "Renan"
+    ],
+    [
+     "Doug",
+     "Cristiano Cotrim",
+     "Gabriel Zanato",
+     "Marcelo"
+    ],
+    [
+     "Alexandre",
+     "Danilo Coqueli",
+     "Mau Pedrosa",
+     "Jhonatan"
+    ]
+   ],
+   "byes": []
+  },
+  "Mista": {
+   "groups": [
+    [
+     "Danilo Coqueli",
+     "Igor Rodrigues",
+     "Camila Correa",
+     "Maiza"
+    ],
+    [
+     "Alexandre",
+     "Guide",
+     "Fernanda Galhardo",
+     "Juliana Souza"
+    ],
+    [
+     "Mau Pedrosa",
+     "Edu",
+     "Alicia",
+     "Maria Eduarda Barbieri"
+    ],
+    [
+     "Cristiano Cotrim",
+     "William",
+     "Luisa",
+     "Bruna"
+    ],
+    [
+     "Filipe",
+     "Marcelo",
+     "Andressa",
+     "Lina"
+    ],
+    [
+     "Marcone Gomes",
+     "André Bueno",
+     "Marcela Fiacadori",
+     "Gabi Pires"
+    ],
+    [
+     "Evandro",
+     "Doug",
+     "Júlia Contin",
+     "Jackeline"
+    ]
+   ],
+   "byes": [
+    "Kelner Teodoro",
+    "Marcos Bermudes",
+    "Gabriel Zanato",
+    "Rafael",
+    "João Pedro Gomes"
+   ]
+  }
+ }
+}

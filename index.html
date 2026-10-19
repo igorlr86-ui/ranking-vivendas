@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ranking Vivendas da Mata</title>
+<meta name="description" content="Ranking individual de beach tennis do Vivendas da Mata: grupos da semana, placares e classificação.">
+<meta name="theme-color" content="#1B5A43">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: uma coluna de leitura no celular; abas no topo; cartões só onde há um objeto (grupo, jogo). */
+:root{
+  color-scheme:light;
+  --bg:#EDF1EE; --surface:#FFFFFF; --surface-2:#E3EAE5; --ink:#12211C; --ink-2:#52635C; --line:#D0DAD4;
+  --accent:#1B5A43; --accent-soft:#D5E7DD; --accent-ink:#FFFFFF;
+  --ball:#C9620F; --ball-soft:#FBE6D2; --good:#23784A; --good-soft:#DCEFE3; --bad:#B0402C; --bad-soft:#F7DFD9;
+  --gold:#C29A1E; --silver:#8E9A95; --bronze:#A8672D;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme:dark;
+    --bg:#0C1411; --surface:#141F1B; --surface-2:#1B2924; --ink:#E3ECE7; --ink-2:#98ABA3; --line:#283833;
+    --accent:#62C398; --accent-soft:#1C3A2E; --accent-ink:#0C1411;
+    --ball:#F09A4E; --ball-soft:#3A2614; --good:#5CC48A; --good-soft:#173726; --bad:#EE8A76; --bad-soft:#3A1E18;
+    --gold:#E0BD4A; --silver:#AEBAB5; --bronze:#D08E52;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.wrap{max-width:920px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 80px}
+h1,h2,h3{font-family:var(--display);font-weight:700;line-height:1.05;margin:0;text-transform:uppercase;letter-spacing:.01em;text-wrap:balance}
+h1{font-size:clamp(2rem,7vw,2.9rem)}
+h2{font-size:1.55rem}
+h3{font-size:1.15rem}
+p{margin:0;max-width:68ch}
+a{color:var(--accent);font-weight:600;text-underline-offset:3px}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.eyebrow{font-size:.74rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+.muted{color:var(--ink-2)}
+.small{font-size:.86rem}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:.8rem;word-break:break-all}
+.stack{display:flex;flex-direction:column;gap:16px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.spread{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.court{display:flex;gap:4px}
+.court i{display:block;height:6px;width:26px;background:var(--accent);border-radius:3px}
+.court i:nth-child(2){width:10px;background:var(--ball)}
+header.top{display:flex;flex-direction:column;gap:8px;padding-bottom:14px;border-bottom:2px solid var(--ink)}
+nav.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin-block:10px 18px;border-bottom:1px solid var(--line)}
+nav.tabs::-webkit-scrollbar{display:none}
+nav.tabs button{border:0;background:none;padding:10px 12px;cursor:pointer;font-family:var(--display);font-size:1.2rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-2);border-bottom:3px solid transparent;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ball)}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:999px;padding:4px;gap:2px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:7px 14px;border-radius:999px;cursor:pointer;font-weight:600;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.banner{border-radius:var(--r);padding:12px 14px;background:var(--ball-soft);color:var(--ink)}
+.info{border-radius:var(--r);padding:12px 14px;background:var(--accent-soft)}
+.err{border-radius:var(--r);padding:12px 14px;background:var(--bad-soft);color:var(--bad);font-weight:600}
+.weekhead{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end}
+.deadline{text-align:right}
+.deadline b{font-family:var(--display);font-size:1.3rem;text-transform:uppercase;display:block}
+@media (max-width:560px){.weekhead{grid-template-columns:1fr}.deadline{text-align:left}}
+.groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.group{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.group .gh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:10px 14px;background:var(--surface-2)}
+.group .gh b{font-family:var(--display);font-size:1.25rem;text-transform:uppercase;letter-spacing:.04em}
+.group .who{padding:10px 14px 4px;font-weight:600;font-size:.95rem}
+.game{padding:10px 14px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:6px}
+.game .teams{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;font-size:.92rem}
+.game .teams .r{text-align:right}
+.game .sc{font-family:var(--display);font-weight:700;font-size:1.45rem;text-align:center;min-width:3.4ch}
+.game .sc.none{color:var(--ink-2);font-size:1.1rem}
+.win{font-weight:700}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);width:max-content;max-width:100%}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.pill.ok{background:var(--good-soft);color:var(--good)}
+.pill.wait{background:var(--ball-soft);color:var(--ball)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.byes{font-size:.92rem}
+.btn{border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:600;min-height:44px}
+.btn.ghost{background:var(--surface);color:var(--accent)}
+.btn.warn{background:var(--surface);color:var(--bad);border-color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.link{border:0;background:none;padding:0;color:var(--accent);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600;font-size:.9rem}
+select,input[type=text],input[type=password]{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);min-height:44px}
+.scorebox{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stepper{display:flex;flex-direction:column;gap:6px;align-items:center;background:var(--surface-2);border-radius:10px;padding:10px}
+.stepper .lbl{font-size:.8rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);text-align:center}
+.stepper .ctl{display:flex;align-items:center;gap:8px}
+.stepper button{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:1.4rem;font-weight:700;cursor:pointer}
+.stepper output{font-family:var(--display);font-size:2.2rem;font-weight:700;min-width:2ch;text-align:center}
+.mycard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px}
+.mycard .cat{font-size:.74rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+.vs{color:var(--ink-2);font-weight:700;padding-inline:4px}
+.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:9px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);font-weight:700;background:var(--surface-2)}
+td.l,th.l{text-align:left}
+tr:last-child td{border-bottom:0}
+td.pts{font-family:var(--display);font-size:1.3rem;font-weight:700}
+.pos{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;font-family:var(--display);font-weight:700;background:var(--surface-2)}
+.pos.g1{background:var(--gold);color:#1a1405}.pos.g2{background:var(--silver);color:#111}.pos.g3{background:var(--bronze);color:#fff}
+tr.me td{background:var(--accent-soft)}
+.facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:.9rem}
+.facts dt{color:var(--ink-2);font-weight:600}
+.facts dd{margin:0;min-width:0}
+details summary{cursor:pointer;font-weight:600;color:var(--accent)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:10px;font-weight:600;z-index:9;max-width:calc(100% - 32px)}
+.loading{padding:40px 0;text-align:center;color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="court" aria-hidden="true"><i></i><i></i></div>
+    <span class="eyebrow">Beach Tennis · Vivendas da Mata · Ranking individual</span>
+    <h1>Ranking Vivendas</h1>
+  </header>
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+  <main id="main" class="stack"><div class="loading">Carregando…</div></main>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="sorteio.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
