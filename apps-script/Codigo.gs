@@ -331,6 +331,8 @@ function setup() {
   var cfg = config_(), cs = configSheet_();
   if (!cfg.codigo_organizacao) append_(cs, ["codigo_organizacao", String(100000 + Math.floor(Math.random() * 900000))]);
   if (!cfg.sem_validacao) append_(cs, ["sem_validacao", "aceitar"]);
+  if (!cfg.semanas_por_rodada) append_(cs, ["semanas_por_rodada", "2"]);
+  colunaJogadores_("E-mail");
   if (SEMANA_1 && !rows_(semanasSheet_()).some(function (r) { return r.id === SEMANA_1.id; })) {
     append_(semanasSheet_(), [SEMANA_1.id, SEMANA_1.inicio, SEMANA_1.prazo, "v1", String(SEMANA_1.rodada), SEMANA_1.randomness, SEMANA_1.assinatura,
       JSON.stringify(SEMANA_1.listas), JSON.stringify(SEMANA_1.sorteio), new Date().toISOString()]);
@@ -343,9 +345,23 @@ function setup() {
 function jogadores_() {
   return rows_(jogadoresSheet_()).map(function (r) {
     return { nome: norm_(r["Jogador"]), codigo: norm_(r["Código"]), sexo: norm_(r["Sexo"]).toUpperCase(),
-      categorias: norm_(r["Categorias"]).split(",").map(norm_).filter(String) };
+      email: norm_(r["E-mail"]).toLowerCase(), categorias: norm_(r["Categorias"]).split(",").map(norm_).filter(String) };
   }).filter(function (p) { return p.nome; });
 }
+/** Garante que a aba Jogadores tenha a coluna pedida; devolve o índice (0-based). */
+function colunaJogadores_(nome) {
+  var sh = jogadoresSheet_(), head = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(String);
+  var i = head.indexOf(nome);
+  if (i < 0) { i = head.filter(String).length; sh.getRange(1, i + 1).setValue(nome).setFontWeight("bold"); }
+  return i;
+}
+/** Grava um valor (como texto) na linha do jogador. */
+function gravarJogador_(nome, coluna, valor) {
+  var ci = colunaJogadores_(coluna), sh = jogadoresSheet_(), v = sh.getDataRange().getValues(), iNome = v[0].map(String).indexOf("Jogador");
+  for (var r = 1; r < v.length; r++) if (norm_(v[r][iNome]) === nome) { sh.getRange(r + 1, ci + 1).setValue("'" + valor); return true; }
+  return false;
+}
+function emailValido_(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 120; }
 function listasAtuais_() {
   var js = jogadores_(), has = function (p, c) { return p.categorias.indexOf(c) >= 0; };
   var by = function (f) { return js.filter(f).map(function (p) { return p.nome; }).sort(); };
@@ -357,18 +373,38 @@ function listasAtuais_() {
   };
 }
 
-/* ================= semanas e sorteio automático ================= */
-// Semana começa na segunda às 14h (Brasília, UTC−3) e termina no domingo às 20h.
+/* ================= rodadas e sorteio automático ================= */
+// Rodada começa numa segunda às 14h (Brasília, UTC−3) e dura N semanas (aba Config: semanas_por_rodada; padrão 2),
+// terminando no domingo às 20h da última semana.
+var DIA = 86400e3;
+function semanasPorRodada_(cfg) { var n = Number((cfg || config_()).semanas_por_rodada); return n >= 1 && n <= 4 ? Math.floor(n) : 2; }
+function prazoDe_(startMs, n) { return startMs + (7 * n - 1) * DIA + 6 * 3600e3; }
 function mondayOf_(ms) {
   var b = new Date(ms - 3 * 3600e3), dow = (b.getUTCDay() + 6) % 7; // 0 = segunda
   var m = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate() - dow, 17, 0, 0); // 14h BRT
-  if (m > ms) m -= 7 * 86400e3;
+  if (m > ms) m -= 7 * DIA;
   return m;
 }
 function weekId_(startMs) { return new Date(startMs - 3 * 3600e3).toISOString().slice(0, 10); }
-function weekMeta_(startMs) {
-  return { id: weekId_(startMs), inicio: new Date(startMs).toISOString(), prazo: new Date(startMs + 6 * 86400e3 + 6 * 3600e3).toISOString(),
+function weekMeta_(startMs, n) {
+  return { id: weekId_(startMs), inicio: new Date(startMs).toISOString(), prazo: new Date(prazoDe_(startMs, n)).toISOString(),
     rodada: Sorteio.drandRound(Math.floor(startMs / 1000)) };
+}
+/** Início da próxima rodada a sortear (a contar da última rodada existente). */
+function proximoInicio_(weeks, n, now) {
+  if (!weeks.length) return mondayOf_(now);
+  var last = Date.parse(weeks[weeks.length - 1].inicio), per = 7 * n * DIA;
+  var k = Math.max(1, Math.floor((now - last) / per));
+  return last + k * per;
+}
+/** A rodada atual sempre usa a duração configurada; grava o prazo novo se mudou. */
+function ajustarPrazoAtual_(cfg) {
+  var sh = semanasSheet_(), v = sh.getDataRange().getValues(), head = v[0].map(String), iId = head.indexOf("id"), iIni = head.indexOf("inicio"), iPr = head.indexOf("prazo");
+  if (v.length < 2) return;
+  var lastRow = 1, lastId = "";
+  for (var r = 1; r < v.length; r++) { var id = cell_("id", v[r][iId]); if (id > lastId) { lastId = id; lastRow = r; } }
+  var ini = Date.parse(cell_("inicio", v[lastRow][iIni])), want = new Date(prazoDe_(ini, semanasPorRodada_(cfg))).toISOString();
+  if (cell_("prazo", v[lastRow][iPr]) !== want) sh.getRange(lastRow + 1, iPr + 1).setValue("'" + want);
 }
 function semanas_() {
   return rows_(semanasSheet_()).map(function (r) {
@@ -378,8 +414,8 @@ function semanas_() {
 }
 /** Faz o sorteio da semana corrente, se já passou da hora e ele ainda não existe. */
 function sorteioSeDevido_() {
-  var now = Date.now(), start = mondayOf_(now), meta = weekMeta_(start);
-  if (meta.id < PRIMEIRA_SEMANA_AUTO) return null;
+  var now = Date.now(), n = semanasPorRodada_(), start = proximoInicio_(semanas_(), n, now), meta = weekMeta_(start, n);
+  if (now < start || meta.id < PRIMEIRA_SEMANA_AUTO) return null;
   if (semanas_().some(function (w) { return w.id === meta.id; })) return null;
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(25000)) return null;
@@ -466,16 +502,19 @@ function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
 function doGet(e) {
   try {
     sorteioSeDevido_();
-    var st = estadoCompleto_(), nextStart = mondayOf_(st.now) + 7 * 86400e3;
+    ajustarPrazoAtual_();
+    var st = estadoCompleto_(), n = semanasPorRodada_(st.cfg), nextStart = proximoInicio_(st.weeks, n, st.now);
+    if (nextStart <= st.now) nextStart += 7 * n * DIA;
     return json_({
       ok: true, agora: new Date(st.now).toISOString(),
       semanas: st.weeks.map(function (w) { return { id: w.id, inicio: w.inicio, prazo: w.prazo, metodo: w.method, rodada: w.rodada, randomness: w.randomness, assinatura: w.assinatura, listas: w.lists, sorteio: w.draw }; }),
       jogos: st.jogos.map(publicJogo_),
       ranking: ranking_(st.jogos),
-      proximo: weekMeta_(nextStart),
+      proximo: weekMeta_(nextStart, n),
+      semanas_por_rodada: n,
       regras: { sem_validacao: st.cfg.sem_validacao || "aceitar" },
       dados: dadosPublicos_(st),
-      jogadores: jogadores_().map(function (p) { return { nome: p.nome, sexo: p.sexo, categorias: p.categorias, temCodigo: !!p.codigo }; })
+      jogadores: jogadores_().map(function (p) { return { nome: p.nome, sexo: p.sexo, categorias: p.categorias, temCodigo: !!p.codigo, temEmail: !!p.email }; })
     });
   } catch (err) { return json_({ ok: false, erro: String(err && err.message || err) }); }
 }
@@ -502,9 +541,10 @@ function autenticar_(nome, codigo) {
   throw new Error("Nome ou código não confere.");
 }
 /* ---- primeiro acesso: o próprio jogador cria o código (só se ainda não houver um) ---- */
-function criarCodigo_(nome, codigo) {
-  nome = norm_(nome); codigo = norm_(codigo);
+function criarCodigo_(nome, codigo, email) {
+  nome = norm_(nome); codigo = norm_(codigo); email = norm_(email).toLowerCase();
   if (!/^[0-9]{4}$/.test(codigo)) throw new Error("O código precisa ter exatamente 4 números.");
+  if (email && !emailValido_(email)) throw new Error("E-mail inválido. Confira e tente de novo.");
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     var sh = jogadoresSheet_(), v = sh.getDataRange().getValues(), head = v[0].map(String);
@@ -516,6 +556,7 @@ function criarCodigo_(nome, codigo) {
       var ci = head.indexOf("Código criado em");
       if (ci < 0) { ci = head.length; sh.getRange(1, ci + 1).setValue("Código criado em").setFontWeight("bold"); }
       sh.getRange(r + 1, ci + 1).setValue("'" + new Date().toISOString());
+      if (email) gravarJogador_(nome, "E-mail", email);
       SpreadsheetApp.flush();
       return { ok: true, nome: nome };
     }
@@ -539,6 +580,7 @@ function guardar_(who, req) {
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     var st = estadoCompleto_(), semana;
+    if (/^grupo:/.test(alvo)) throw new Error("Use o agendamento do grupo.");
     if (alvo === "eu") {
       semana = semanaAtualId_(st.weeks);
       if (!semana) throw new Error("Ainda não há semana sorteada.");
@@ -564,13 +606,112 @@ function guardar_(who, req) {
     return { ok: true };
   } finally { lock.releaseLock(); }
 }
+/* ---- agendamento do grupo, com aviso por e-mail ---- */
+function grupoDe_(st, chave) {
+  var p = String(chave || "").split("|"), w = st.weeks.filter(function (x) { return x.id === p[0]; })[0];
+  if (!w || p.length !== 3 || CATS.indexOf(p[1]) < 0) return null;
+  var gi = "ABCDEFGHIJKLMNOP".indexOf(p[2]), d = w.draw[p[1]];
+  if (gi < 0 || !d || !d.groups[gi]) return null;
+  return { semana: w, categoria: p[1], grupo: p[2], players: d.groups[gi].players || d.groups[gi] };
+}
+var MESES_ = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"], DIAS_ = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+function slotMs_(slot) { var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})$/.exec(slot || ""); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] + 3) : NaN; }
+function slotTexto_(slot) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})$/.exec(slot), d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return DIAS_[d.getUTCDay()] + ", " + (+m[3]) + " de " + MESES_[+m[2] - 1] + ", às " + (+m[4]) + "h";
+}
+function escHtml_(t) { return String(t || "").replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function escIcs_(t) { return String(t || "").replace(/([\\,;])/g, "\\$1").replace(/\r?\n/g, " "); }
+function icsData_(ms) { return new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, ""); }
+function agendar_(who, req) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  var g, quando, local, desmarcar = !!req.desmarcar, alvo, now = Date.now();
+  try {
+    var st = estadoCompleto_();
+    g = grupoDe_(st, req.grupo);
+    if (!g) throw new Error("Grupo não encontrado.");
+    if (g.semana.id !== st.weeks[st.weeks.length - 1].id) throw new Error("Só dá para agendar jogos da rodada atual.");
+    if (!who.admin && g.players.indexOf(who.nome) < 0) throw new Error("Você não está neste grupo.");
+    quando = norm_(req.quando); local = norm_(req.local).slice(0, 60);
+    if (!desmarcar) {
+      var t = slotMs_(quando);
+      if (isNaN(t)) throw new Error("Escolha o dia e o horário.");
+      if (t < now - 3600e3) throw new Error("Esse horário já passou.");
+      if (t < Date.parse(g.semana.inicio) || t > Date.parse(g.semana.prazo)) throw new Error("O horário precisa ser dentro da rodada (até o prazo).");
+    }
+    alvo = "grupo:" + req.grupo;
+    var valor = desmarcar ? "" : JSON.stringify({ quando: quando, local: local, por: who.nome });
+    guardarLinha_(g.semana.id, alvo, "Grupo", "agenda", valor);
+  } finally { lock.releaseLock(); }
+  return avisarGrupo_(g, quando, local, who.nome, desmarcar, alvo);
+}
+function guardarLinha_(semana, alvo, jogador, chave, valor) {
+  var sh = dadosSheet_(), v = sh.getDataRange().getValues(), head = v[0].map(String);
+  var idx = function (h) { return head.indexOf(h); };
+  var line = [semana, alvo, jogador, chave, valor, new Date().toISOString()].map(function (x) { return "'" + x; });
+  for (var r = 1; r < v.length; r++) {
+    if (cell_("semana", v[r][idx("semana")]) === semana && cell_("alvo", v[r][idx("alvo")]) === alvo &&
+        cell_("jogador", v[r][idx("jogador")]) === jogador && cell_("chave", v[r][idx("chave")]) === chave) {
+      sh.getRange(r + 1, 1, 1, line.length).setValues([line]); SpreadsheetApp.flush(); return;
+    }
+  }
+  sh.appendRow(line); SpreadsheetApp.flush();
+}
+function avisarGrupo_(g, quando, local, por, desmarcar, alvo) {
+  var emails = {}; jogadores_().forEach(function (p) { if (p.email) emails[p.nome] = p.email; });
+  var com = g.players.filter(function (p) { return emails[p]; }), sem = g.players.filter(function (p) { return !emails[p]; });
+  var titulo = g.categoria + " · Grupo " + g.grupo, jogos = Sorteio.gamesFor(g.categoria, g.players);
+  var site = "https://igorlr86-ui.github.io/ranking-vivendas/";
+  var listaJogos = jogos.map(function (j, i) { return "Jogo " + (i + 1) + ": " + j[0].join(" e ") + " × " + j[1].join(" e "); });
+  var assunto = desmarcar ? "Jogo desmarcado — " + titulo : "🎾 Jogo marcado: " + titulo + " — " + slotTexto_(quando);
+  var texto = desmarcar
+    ? por + " desmarcou o horário do " + titulo + ". Combinem um novo horário no app:\n" + site
+    : "Jogo marcado por " + por + ".\n\n" + titulo + "\n" + slotTexto_(quando) + (local ? "\nLocal: " + local : "") + "\n\nJogadores: " + g.players.join(", ") + "\n\n" + listaJogos.join("\n") + "\n\nQuem ganha lança o placar no app; um dos que perderam confirma:\n" + site;
+  var html = "<div style=\"font-family:Arial,sans-serif;font-size:15px;color:#12211C\">"
+    + (desmarcar ? "<p><b>" + por + "</b> desmarcou o horário do <b>" + titulo + "</b>.</p><p>Combinem um novo horário no app.</p>"
+      : "<p style=\"font-size:18px\"><b>🎾 " + titulo + "</b></p><p style=\"font-size:17px\"><b>" + slotTexto_(quando) + "</b>" + (local ? "<br>Local: " + escHtml_(local) : "") + "</p>"
+        + "<p>Jogadores: " + g.players.join(", ") + "</p><ul>" + listaJogos.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>"
+        + "<p style=\"color:#52635C\">Marcado por " + por + ". Quem ganha lança o placar no app; um dos que perderam confirma.</p>")
+    + "<p><a href=\"" + site + "\" style=\"background:#1B5A43;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none\">Abrir o app do ranking</a></p></div>";
+  var anexos = [];
+  if (!desmarcar) {
+    var t = slotMs_(quando), dur = g.categoria === "Mista" ? 90 : 120;
+    var ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Ranking Vivendas//PT", "METHOD:PUBLISH", "BEGIN:VEVENT",
+      "UID:" + alvo.replace(/[^A-Za-z0-9-]/g, "") + "@ranking-vivendas", "SEQUENCE:" + Math.floor(Date.now() / 1000),
+      "DTSTAMP:" + icsData_(Date.now()), "DTSTART:" + icsData_(t), "DTEND:" + icsData_(t + dur * 60000),
+      "SUMMARY:Beach tennis – " + titulo, "LOCATION:" + escIcs_(local || "Vivendas da Mata"),
+      "DESCRIPTION:" + ("Jogadores: " + g.players.join(", ") + "\\n" + listaJogos.join("\\n")).replace(/,/g, "\\,"),
+      "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    anexos.push(Utilities.newBlob(ics, "text/calendar", "jogo-ranking.ics"));
+  }
+  var enviados = 0, erro = "";
+  try {
+    if (com.length && MailApp.getRemainingDailyQuota() < com.length) throw new Error("limite diário de e-mails do Google atingido");
+    com.forEach(function (p) {
+      MailApp.sendEmail({ to: emails[p], subject: assunto, body: texto, htmlBody: html, name: "Ranking Vivendas", attachments: anexos });
+      enviados++;
+    });
+  } catch (e) { erro = String(e && e.message || e); }
+  return { ok: true, enviados: enviados, semEmail: sem, erroEmail: erro };
+}
+/** Rode uma vez no editor para autorizar o envio de e-mails. */
+function autorizarEmail() { return "E-mails liberados. Cota restante hoje: " + MailApp.getRemainingDailyQuota(); }
 function doPost(e) {
   try {
     var req = JSON.parse(e.postData.contents || "{}");
-    if (req.acao === "criar_codigo") return json_(criarCodigo_(req.nome, req.codigo));
+    if (req.acao === "criar_codigo") return json_(criarCodigo_(req.nome, req.codigo, req.email));
     var who = autenticar_(req.nome, req.codigo);
     if (req.acao === "entrar") return json_({ ok: true, nome: who.nome, admin: who.admin });
     if (req.acao === "guardar") return json_(guardar_(who, req));
+    if (req.acao === "email") {
+      var em = norm_(req.email).toLowerCase();
+      if (who.admin) throw new Error("A organização não tem e-mail de jogador.");
+      if (em && !emailValido_(em)) throw new Error("E-mail inválido. Confira e tente de novo.");
+      var l0 = LockService.getScriptLock(); l0.waitLock(20000);
+      try { gravarJogador_(who.nome, "E-mail", em); SpreadsheetApp.flush(); } finally { l0.releaseLock(); }
+      return json_({ ok: true });
+    }
+    if (req.acao === "agendar") return json_(agendar_(who, req));
     var lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {

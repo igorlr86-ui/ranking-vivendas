@@ -2,8 +2,8 @@
   "use strict";
   var CFG = window.RANKING_CONFIG || {};
   var CATS = ["Feminino", "Masculino", "Mista"];
-  var TABS = [["semana", "Semana"], ["lancar", "Meus jogos"], ["ranking", "Ranking"], ["sorteio", "Sorteio"]];
-  var S = { data: null, err: null, tab: "semana", cat: "Feminino", me: null, busy: false, forms: {}, checks: {}, loginErr: null, dispEdit: null };
+  var TABS = [["semana", "Rodada"], ["lancar", "Meus jogos"], ["ranking", "Ranking"], ["regras", "Regras"], ["sorteio", "Sorteio"]];
+  var S = { data: null, err: null, tab: "semana", cat: "Feminino", me: null, busy: false, forms: {}, checks: {}, loginErr: null, dispEdit: null, dispOpen: {}, sched: null };
 
   /* ---------- memória do aparelho ---------- */
   try {
@@ -32,7 +32,7 @@
   }
   function names(p) { return esc(p[0]) + " e " + esc(p[1]); }
   var toastT;
-  function toast(msg) { var t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 3600); }
+  function toast(msg) { var t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, Math.min(9000, 3000 + msg.length * 35)); }
 
   /* ---------- comunicação com a planilha ---------- */
   function load() {
@@ -59,29 +59,46 @@
   var H_FIRST = 6, H_LAST = 21; // horários de início: 6h ... 21h (jogo de 21h às 22h)
   var PERIODS = [["Manhã", 6, 11], ["Tarde", 12, 17], ["Noite", 18, 21]];
   var DOW = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  var TIPOS = { genero: "Feminino/Masculino", mista: "Mista" };
+  function tipoDe(cat) { return cat === "Mista" ? "mista" : "genero"; }
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
-  // Dias e horários da semana atual (horário de Brasília), sem os que já passaram.
+  // Dias e horários da rodada atual (horário de Brasília), sem os que já passaram.
   function weekDays(w) {
     var start = new Date(w.inicio).getTime(), end = new Date(w.prazo).getTime(), now = Date.now();
     var b = new Date(start - 3 * 3600e3), days = [];
-    for (var i = 0; i < 7; i++) {
+    for (var i = 0; i < 31; i++) {
       var dt = new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate() + i));
+      if (dt.getTime() + 3 * 3600e3 > end) break;
       var ymd = dt.getUTCFullYear() + "-" + pad2(dt.getUTCMonth() + 1) + "-" + pad2(dt.getUTCDate());
       var hours = [];
       for (var h = H_FIRST; h <= H_LAST; h++) {
         var t = Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), h + 3);
         if (t >= start && t + 3600e3 <= end + 1 && t + 3600e3 > now) hours.push(h);
       }
-      if (hours.length) days.push({ ymd: ymd, label: DOW[dt.getUTCDay()] + " " + pad2(dt.getUTCDate()) + "/" + pad2(dt.getUTCMonth() + 1), short: DOW[dt.getUTCDay()], hours: hours });
+      if (hours.length) days.push({ ymd: ymd, label: DOW[dt.getUTCDay()] + " " + pad2(dt.getUTCDate()) + "/" + pad2(dt.getUTCMonth() + 1), hours: hours });
     }
     return days;
   }
   function slotId(ymd, h) { return ymd + "T" + pad2(h); }
+  function slotLabel(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})$/.exec(s || ""); if (!m) return "";
+    var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return DOW[d.getUTCDay()] + " " + m[3] + "/" + m[2] + " às " + (+m[4]) + "h";
+  }
   function validSlots(w) { var out = {}; weekDays(w).forEach(function (d) { d.hours.forEach(function (h) { out[slotId(d.ymd, h)] = 1; }); }); return out; }
-  function dispOf(nome) {
-    var row = (S.data.dados || []).filter(function (r) { return r.alvo === "eu" && r.chave === "disp" && r.jogador === nome; })[0];
+  function dadoEu(nome, chave) { return (S.data.dados || []).filter(function (r) { return r.alvo === "eu" && r.chave === chave && r.jogador === nome; })[0]; }
+  // Horários de um jogador para o tipo de jogo (genero ou mista). O registro antigo "disp" vale para os dois.
+  function dispOf(nome, tipo) {
+    var row = dadoEu(nome, "disp_" + tipo) || dadoEu(nome, "disp");
     if (!row) return null;
     try { var v = JSON.parse(row.valor); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+  function myTipos(nome) {
+    var p = (S.data.jogadores || []).filter(function (x) { return x.nome === nome; })[0], out = [];
+    if (!p) return ["genero", "mista"];
+    if (p.categorias.indexOf("Feminino") >= 0 || p.categorias.indexOf("Masculino") >= 0) out.push("genero");
+    if (p.categorias.indexOf("Mista") >= 0) out.push("mista");
+    return out;
   }
   function fmtRanges(slots, w) {
     var days = weekDays(w), set = {}; slots.forEach(function (s) { set[s] = 1; });
@@ -96,22 +113,22 @@
     return parts;
   }
   // Horários em comum de um grupo de jogadores.
-  function groupAvail(players, w) {
+  function groupAvail(players, w, tipo) {
     var valid = validSlots(w), marked = [], missing = [], sets = {};
-    players.forEach(function (p) { var d = dispOf(p); if (d) { marked.push(p); sets[p] = {}; d.forEach(function (s) { if (valid[s]) sets[p][s] = 1; }); } else missing.push(p); });
-    var all = Object.keys(valid).filter(function (s) { return marked.length && marked.every(function (p) { return sets[p][s]; }); });
+    players.forEach(function (p) { var d = dispOf(p, tipo); if (d) { marked.push(p); sets[p] = {}; d.forEach(function (s) { if (valid[s]) sets[p][s] = 1; }); } else missing.push(p); });
+    var all = Object.keys(valid).filter(function (s) { return marked.length && marked.every(function (p) { return sets[p][s]; }); }).sort();
     var three = [];
     if (marked.length === players.length && !all.length && players.length === 4) {
       players.forEach(function (out) {
         var others = players.filter(function (p) { return p !== out; });
-        var sl = Object.keys(valid).filter(function (s) { return others.every(function (p) { return sets[p][s]; }); });
+        var sl = Object.keys(valid).filter(function (s) { return others.every(function (p) { return sets[p][s]; }); }).sort();
         if (sl.length) three.push({ out: out, ranges: fmtRanges(sl, w) });
       });
     }
     return { marked: marked, missing: missing, all: all, three: three };
   }
-  function availBox(players, w) {
-    var g = groupAvail(players, w), n = players.length, html = '<div class="avail">';
+  function availBox(players, w, tipo) {
+    var g = groupAvail(players, w, tipo), n = players.length, html = '<div class="avail">';
     if (!g.marked.length) return html + '<span class="small muted">🗓️ Ninguém marcou horários ainda.</span></div>';
     var ranges = fmtRanges(g.all, w);
     if (g.missing.length) {
@@ -126,31 +143,70 @@
     return html + "</div>";
   }
   function dispEditor(w) {
-    var sel = S.dispEdit, days = weekDays(w);
-    if (!days.length) return '<p class="small muted">Não há mais horários nesta semana.</p>';
-    return '<div class="stack" style="gap:14px">' + days.map(function (d) {
-      return '<div class="dday"><div class="spread"><b>' + esc(d.label) + '</b><div class="row" style="gap:6px">'
-        + PERIODS.filter(function (p) { return d.hours.some(function (h) { return h >= p[1] && h <= p[2]; }); }).map(function (p) {
-          return '<button type="button" class="pchip" data-period="' + d.ymd + "|" + p[1] + "|" + p[2] + '">' + p[0] + "</button>";
+    var sel = S.dispEdit.sel, days = weekDays(w), open = S.dispOpen || {};
+    if (!days.length) return '<p class="small muted">Não há mais horários nesta rodada.</p>';
+    return '<div class="stack" style="gap:10px">' + days.map(function (d) {
+      var count = d.hours.filter(function (h) { return sel[slotId(d.ymd, h)]; }).length, isOpen = open[d.ymd];
+      return '<div class="dday"><div class="spread"><button type="button" class="dlabel" data-day="' + d.ymd + '" aria-expanded="' + !!isOpen + '"><b>' + esc(d.label) + "</b> "
+        + (count ? '<span class="dcount">' + count + "h</span>" : "") + '<span class="caret">' + (isOpen ? "▴" : "▾") + "</span></button>"
+        + '<div class="row" style="gap:6px">' + PERIODS.filter(function (p) { return d.hours.some(function (h) { return h >= p[1] && h <= p[2]; }); }).map(function (p) {
+          var hs = d.hours.filter(function (h) { return h >= p[1] && h <= p[2]; }), on = hs.every(function (h) { return sel[slotId(d.ymd, h)]; });
+          return '<button type="button" class="pchip" aria-pressed="' + on + '" data-period="' + d.ymd + "|" + p[1] + "|" + p[2] + '">' + p[0] + "</button>";
         }).join("") + "</div></div>"
-        + '<div class="hours">' + d.hours.map(function (h) {
+        + (isOpen ? '<div class="hours">' + d.hours.map(function (h) {
           var id = slotId(d.ymd, h);
           return '<button type="button" class="hchip" data-slot="' + id + '" aria-pressed="' + !!sel[id] + '">' + h + "h</button>";
-        }).join("") + "</div></div>";
+        }).join("") + "</div>" : "") + "</div>";
     }).join("")
       + '<div class="row"><button class="btn" type="button" data-act="disp-save"' + (S.busy ? " disabled" : "") + '>Salvar horários</button><button class="link" type="button" data-act="disp-cancel">Cancelar</button></div></div>';
   }
   function dispPanel(w) {
-    var me = S.me.nome, mine = dispOf(me);
-    var html = '<section class="panel"><div class="spread"><h3>Meus horários nesta semana</h3>'
-      + (S.dispEdit ? "" : '<button class="btn ghost" type="button" data-act="disp-edit">' + (mine ? "Editar" : "Marcar horários") + "</button>") + "</div>";
-    if (S.dispEdit) return html + '<p class="small muted">Toque nos horários em que você pode jogar (cada um é o início de 1 hora de jogo). Os botões Manhã, Tarde e Noite marcam o período inteiro.</p>' + dispEditor(w) + "</section>";
-    var ranges = mine ? fmtRanges(mine, w) : [];
-    html += mine ? (ranges.length ? "<p>" + ranges.map(esc).join(" · ") + "</p>" : '<p class="muted">Você marcou que não tem horário livre nesta semana.</p>')
-      : '<p class="muted">Marque quando pode jogar. O app mostra para o seu grupo os horários em que os quatro podem.</p>';
+    var me = S.me.nome, tipos = myTipos(me);
+    var html = '<section class="panel"><h3>Meus horários livres nesta rodada</h3>';
+    if (S.dispEdit) {
+      var tp = S.dispEdit.tipo, other = tp === "mista" ? "genero" : "mista";
+      return html + '<p class="small"><b>Para os jogos de ' + TIPOS[tp] + ".</b> Toque nos períodos ou abra o dia para escolher hora por hora (cada horário é o início de 1 hora de jogo).</p>"
+        + (tipos.indexOf(other) >= 0 && dispOf(me, other) ? '<button class="link" type="button" data-act="disp-copy">Copiar os horários de ' + TIPOS[other] + "</button>" : "")
+        + dispEditor(w) + "</section>";
+    }
+    html += '<p class="small muted">Marque quando pode jogar. O app mostra ao seu grupo os horários em que os quatro podem.</p>';
+    tipos.forEach(function (tp) {
+      var mine = dispOf(me, tp), ranges = mine ? fmtRanges(mine, w) : [];
+      html += '<div class="dtipo"><div class="spread"><b>' + TIPOS[tp] + '</b><button class="btn ghost small-btn" type="button" data-act="disp-edit" data-tipo="' + tp + '">' + (mine ? "Editar" : "Marcar horários") + "</button></div>"
+        + (mine ? (ranges.length ? '<p class="small">' + ranges.map(esc).join(" · ") + "</p>" : '<p class="small muted">Sem horário livre nesta rodada.</p>') : '<p class="small muted">Ainda não marcado.</p>') + "</div>";
+    });
     return html + "</section>";
   }
 
+  /* ---------- agendamento do grupo ---------- */
+  function agendaOf(grupoKey) {
+    var row = (S.data.dados || []).filter(function (r) { return r.alvo === "grupo:" + grupoKey && r.chave === "agenda"; })[0];
+    if (!row || !row.valor) return null;
+    try { return JSON.parse(row.valor); } catch (e) { return null; }
+  }
+  function agendaLine(grupoKey) {
+    var ag = agendaOf(grupoKey);
+    if (!ag) return "";
+    return '<div class="agenda"><b>📅 Marcado: ' + esc(slotLabel(ag.quando)) + "</b>" + (ag.local ? " · " + esc(ag.local) : "") + '<span class="small muted"> (por ' + esc(ag.por) + ")</span></div>";
+  }
+  function scheduleBox(grupoKey, players, w, tipo) {
+    var ag = agendaOf(grupoKey), f = S.sched && S.sched.key === grupoKey ? S.sched : null;
+    if (!f) {
+      return (ag ? agendaLine(grupoKey) : "")
+        + '<div class="row" style="margin-top:8px"><button class="btn ghost" type="button" data-act="sched-open" data-g="' + esc(grupoKey) + '">' + (ag ? "Alterar dia e hora" : "Marcar dia e hora do jogo") + "</button>"
+        + (ag ? '<button class="link" type="button" data-act="sched-cancel-game" data-g="' + esc(grupoKey) + '">Desmarcar</button>' : "") + "</div>";
+    }
+    var days = weekDays(w), common = groupAvail(players, w, tipo).all.slice(0, 6);
+    var dayOpts = days.map(function (d) { return '<option value="' + d.ymd + '"' + (f.ymd === d.ymd ? " selected" : "") + ">" + esc(d.label) + "</option>"; }).join("");
+    var dsel = days.filter(function (d) { return d.ymd === f.ymd; })[0] || days[0];
+    var hourOpts = dsel ? dsel.hours.map(function (h) { return '<option value="' + h + '"' + (Number(f.h) === h ? " selected" : "") + ">" + h + "h</option>"; }).join("") : "";
+    return '<form class="stack sched" style="gap:10px;margin-top:8px" data-g="' + esc(grupoKey) + '">'
+      + (common.length ? '<div class="small"><b>Horários em que os quatro podem:</b><div class="row" style="gap:6px;margin-top:6px">' + common.map(function (s) { return '<button type="button" class="pchip" data-pick="' + s + '">' + esc(slotLabel(s)) + "</button>"; }).join("") + "</div></div>" : "")
+      + '<div class="scorebox"><div class="field"><label for="sday">Dia</label><select id="sday">' + dayOpts + '</select></div><div class="field"><label for="shour">Hora</label><select id="shour">' + hourOpts + "</select></div></div>"
+      + '<div class="field"><label for="slocal">Local (opcional)</label><input id="slocal" type="text" maxlength="60" placeholder="Ex.: quadra 2 do condomínio" value="' + esc(f.local || "") + '"></div>'
+      + '<p class="small muted">Os quatro do grupo recebem um e-mail com a data e um convite para a agenda do celular.</p>'
+      + '<div class="row"><button class="btn" type="submit"' + (S.busy ? " disabled" : "") + '>Marcar e avisar por e-mail</button><button class="link" type="button" data-act="sched-close">Cancelar</button></div></form>';
+  }
   function statusPill(j) {
     var sc = j.placar ? j.placar[0] + "×" + j.placar[1] : "";
     switch (j.status) {
@@ -184,7 +240,7 @@
   }
   function weekHead(w) {
     var open = Date.now() < new Date(w.prazo);
-    return '<div class="weekhead"><div class="stack" style="gap:6px"><span class="eyebrow">Semana de ' + fmtDate(w.inicio) + " a " + fmtDate(w.prazo) + "</span>" + catSeg() + "</div>"
+    return '<div class="weekhead"><div class="stack" style="gap:6px"><span class="eyebrow">Rodada de ' + fmtDate(w.inicio) + " a " + fmtDate(w.prazo) + "</span>" + catSeg() + "</div>"
       + '<div class="deadline"><span class="eyebrow">Prazo</span><b>' + esc(fmtDay(w.prazo)) + " às 20h</b><span class=\"small muted\">" + (open ? countdown(w.prazo) : "prazo encerrado") + "</span></div></div>";
   }
   function renderSemana() {
@@ -197,11 +253,12 @@
       var done = games.filter(function (j) { return j.conta; }).length;
       return '<article class="group"><div class="gh"><b>Grupo ' + letter + '</b><span class="small muted">' + done + " de " + games.length + " jogos</span></div>"
         + '<div class="who">' + players.map(esc).join(" · ") + "</div>"
-        + availBox(players, w)
+        + agendaLine(w.id + "|" + S.cat + "|" + letter)
+        + availBox(players, w, tipoDe(S.cat))
         + games.map(function (j) { return gameRow(j); }).join("") + "</article>";
     }).join("") + "</div>";
-    if (d.byes && d.byes.length) html += '<p class="byes"><b>De folga nesta semana:</b> ' + d.byes.map(esc).join(", ") + ".</p>";
-    html += '<p class="small muted">Cada jogador marca seus horários na aba “Meus jogos”, e o grupo vê aqui quando os quatro podem. Os jogos podem ser feitos em qualquer ordem. Quem ganha lança o placar; um dos que perderam confirma.</p>';
+    if (d.byes && d.byes.length) html += '<p class="byes"><b>De folga nesta rodada:</b> ' + d.byes.map(esc).join(", ") + ".</p>";
+    html += '<p class="small muted">Cada jogador marca seus horários livres na aba “Meus jogos”, e o grupo vê aqui quando os quatro podem. Lá também se marca o dia e a hora do jogo, com aviso por e-mail. Quem ganha lança o placar; um dos que perderam confirma.</p>';
     return html;
   }
 
@@ -258,9 +315,10 @@
       + js.map(function (x) { return '<option' + (x.nome === sel ? " selected" : "") + ">" + esc(x.nome) + "</option>"; }).join("")
       + '<option value="Organização"' + (sel === "Organização" ? " selected" : "") + '>Organização</option></select></div>';
     if (sel && criar) {
-      html += '<div class="info"><b>Primeiro acesso.</b> Crie um código de 4 números e guarde. Ele é só seu: com ele você marca seus horários, lança e confirma placares.</div>'
+      html += '<div class="info"><b>Primeiro acesso.</b> Crie um código de 4 números e guarde. Ele é só seu: com ele você marca horários, agenda jogos, lança e confirma placares.</div>'
         + '<div class="field"><label for="lcod">Crie seu código</label><input id="lcod" type="password" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" required></div>'
-        + '<div class="field"><label for="lcod2">Repita o código</label><input id="lcod2" type="password" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" required></div>';
+        + '<div class="field"><label for="lcod2">Repita o código</label><input id="lcod2" type="password" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" required></div>'
+        + '<div class="field"><label for="lemail">Seu e-mail (para receber os avisos de jogo marcado)</label><input id="lemail" type="email" inputmode="email" autocomplete="email" maxlength="120" placeholder="nome@exemplo.com"></div>';
     } else if (sel) {
       html += '<div class="field"><label for="lcod">' + (sel === "Organização" ? "Código da organização" : "Seu código") + '</label><input id="lcod" type="password" inputmode="numeric" autocomplete="off" maxlength="8" required></div>'
         + (sel !== "Organização" ? '<p class="small muted">Esqueceu o código ou não foi você que criou? Fale com a organização.</p>' : "");
@@ -282,13 +340,20 @@
       var d = w.sorteio[c]; if (!d) return "";
       var gi = -1; d.groups.forEach(function (g, i) { if ((g.players || g).indexOf(me) >= 0) gi = i; });
       if (gi < 0) return "";
-      var players = d.groups[gi].players || d.groups[gi];
-      return '<article class="mycard"><span class="cat">' + esc(c) + " · Grupo " + "ABCDEFGHIJKLMNOP".charAt(gi) + "</span><p>" + players.map(esc).join(" · ") + "</p>" + availBox(players, w) + "</article>";
+      var players = d.groups[gi].players || d.groups[gi], letter = "ABCDEFGHIJKLMNOP".charAt(gi), gk = w.id + "|" + c + "|" + letter;
+      return '<article class="mycard"><span class="cat">' + esc(c) + " · Grupo " + letter + "</span><p>" + players.map(esc).join(" · ") + "</p>"
+        + scheduleBox(gk, players, w, tipoDe(c)) + availBox(players, w, tipoDe(c)) + "</article>";
     }).join("");
+    var pj = (S.data.jogadores || []).filter(function (x) { return x.nome === me; })[0];
+    var emailBox = S.emailEdit || (pj && !pj.temEmail)
+      ? '<form id="emailf" class="panel"><h3>' + (pj && pj.temEmail ? "Trocar meu e-mail" : "Cadastre seu e-mail") + '</h3><p class="small muted">Para receber o aviso quando alguém do seu grupo marcar o dia e a hora do jogo.</p><div class="field"><label for="memail">E-mail</label><input id="memail" type="email" inputmode="email" autocomplete="email" maxlength="120" required></div><div class="row"><button class="btn" type="submit"' + (S.busy ? " disabled" : "") + '>Salvar e-mail</button>' + (S.emailEdit ? '<button class="link" type="button" data-act="email-cancel">Cancelar</button>' : "") + "</div></form>"
+      : "";
     return head + (pend.length ? '<div class="banner"><b>' + pend.length + (pend.length > 1 ? " placares esperam" : " placar espera") + " a sua confirmação.</b></div>" : "")
+      + emailBox
       + (mine.length ? dispPanel(w) + (myGroups ? "<h3>Meus grupos</h3>" + '<div class="stack">' + myGroups + "</div>" : "") + "<h3>Meus jogos</h3>" : "")
-      + (mine.length ? '<div class="stack">' + mine.map(myGameCard).join("") + "</div>" : '<div class="panel"><p>Você não tem jogos nesta semana.</p></div>')
-      + '<p class="small muted">Quem ganhou lança o placar; um dos que perderam confirma. Se alguém lançar errado, quem lançou pode corrigir até a confirmação.</p>';
+      + (mine.length ? '<div class="stack">' + mine.map(myGameCard).join("") + "</div>" : '<div class="panel"><p>Você não tem jogos nesta rodada.</p></div>')
+      + '<p class="small muted">Quem ganhou lança o placar; um dos que perderam confirma. Se alguém lançar errado, quem lançou pode corrigir até a confirmação.</p>'
+      + (pj && pj.temEmail && !S.emailEdit ? '<p class="small muted">E-mail cadastrado para os avisos. <button class="link" type="button" data-act="email-edit">Trocar e-mail</button></p>' : "");
   }
   function renderAdmin() {
     var js = S.data.jogos.filter(function (j) { return j.status === "contestado" || j.status === "aguardando"; });
@@ -300,20 +365,21 @@
     };
     return '<div class="info">Modo organização: você pode definir o placar de qualquer jogo (inclusive fora do prazo) ou apagar os lançamentos.</div>'
       + "<h2>Pendentes e em disputa</h2>" + (js.length ? '<div class="stack">' + js.map(card).join("") + "</div>" : '<p class="muted">Nada pendente.</p>')
-      + '<details><summary>Todos os jogos da semana atual</summary><div class="stack" style="margin-top:10px">' + all.map(card).join("") + "</div></details>";
+      + '<details><summary>Todos os jogos da rodada atual</summary><div class="stack" style="margin-top:10px">' + all.map(card).join("") + "</div></details>";
   }
 
   /* ---- sorteio ---- */
   function renderSorteio() {
     var ws = weeks().slice().reverse(), nx = S.data.proximo;
-    var html = '<section class="panel"><h2>Como é o sorteio</h2><p>Toda segunda-feira às 14h, uma rede internacional independente (drand) divulga um número aleatório. Os grupos da semana saem desse número. Ninguém da organização escolhe nem consegue prever o resultado.</p>'
+    var nsem = S.data.semanas_por_rodada || 2, quando = nsem === 1 ? "Toda segunda-feira" : "A cada " + nsem + " semanas, na segunda-feira";
+    var html = '<section class="panel"><h2>Como é o sorteio</h2><p>' + quando + ' às 14h, uma rede internacional independente (drand) divulga um número aleatório. Os grupos da rodada saem desse número. Ninguém da organização escolhe nem consegue prever o resultado.</p>'
       + "<p>O sorteio evita colocar no mesmo grupo quem já jogou junto na mesma categoria. Na Mista, quem folgou menos vezes tem a vez de folgar.</p>"
       + '<p class="small muted">Qualquer pessoa pode conferir cada sorteio abaixo: o botão busca o número oficial e refaz a conta no seu celular. O código está público em <a href="' + esc(CFG.repoUrl) + '" target="_blank" rel="noopener">GitHub</a>.</p></section>';
     if (nx) html += '<div class="info"><b>Próximo sorteio:</b> segunda, ' + fmtDate(nx.inicio) + " às 14h, com o número da rodada " + nx.rodada.toLocaleString("pt-BR") + " do drand.</div>";
     html += ws.map(function (w, i) {
       var ck = S.checks[w.id];
-      return '<section class="panel"><div class="spread"><h3>Semana de ' + fmtDate(w.inicio) + "</h3>" + (ck ? '<span class="pill ' + (ck.ok ? "ok" : ck.ok === false ? "bad" : "") + '">' + esc(ck.label) + "</span>" : "") + "</div>"
-        + '<dl class="facts"><dt>Rodada</dt><dd class="num">' + w.rodada.toLocaleString("pt-BR") + ' · <a href="' + Sorteio.drandUrl(w.rodada) + '" target="_blank" rel="noopener">ver no drand</a></dd><dt>Número</dt><dd class="mono">' + esc(w.randomness) + "</dd><dt>Método</dt><dd>" + (w.metodo === "v1" ? "Grupos na ordem do sorteio (1ª semana)" : "Sem repetir quem já jogou junto") + "</dd></dl>"
+      return '<section class="panel"><div class="spread"><h3>Rodada de ' + fmtDate(w.inicio) + "</h3>" + (ck ? '<span class="pill ' + (ck.ok ? "ok" : ck.ok === false ? "bad" : "") + '">' + esc(ck.label) + "</span>" : "") + "</div>"
+        + '<dl class="facts"><dt>Rodada</dt><dd class="num">' + w.rodada.toLocaleString("pt-BR") + ' · <a href="' + Sorteio.drandUrl(w.rodada) + '" target="_blank" rel="noopener">ver no drand</a></dd><dt>Número</dt><dd class="mono">' + esc(w.randomness) + "</dd><dt>Método</dt><dd>" + (w.metodo === "v1" ? "Grupos na ordem do sorteio (1ª rodada)" : "Sem repetir quem já jogou junto") + "</dd></dl>"
         + (ck && ck.msg ? '<p class="small">' + esc(ck.msg) + "</p>" : "")
         + '<div class="row"><button class="btn ghost" type="button" data-act="check" data-w="' + esc(w.id) + '">Conferir este sorteio</button></div></section>';
     }).join("");
@@ -335,6 +401,24 @@
   }
   function norm(d) { return { groups: d.groups.map(function (g) { return { players: g.players || g }; }), byes: d.byes }; }
 
+  /* ---- regras ---- */
+  function renderRegras() {
+    var nsem = S.data.semanas_por_rodada || 2, aceitar = !S.data.regras || S.data.regras.sem_validacao !== "pendente";
+    var sec = function (t, body) { return '<section class="panel regra"><h3>' + t + "</h3>" + body + "</section>"; };
+    return '<div class="spread"><h2>Regras do ranking</h2></div>'
+      + sec("Categorias e classificação", "<ul><li>Três categorias: <b>Feminino</b>, <b>Masculino</b> e <b>Mista</b>.</li><li>A classificação é <b>individual</b>: cada jogador soma os próprios pontos, mesmo jogando em dupla.</li></ul>")
+      + sec("Rodadas", "<ul><li>Cada rodada dura <b>" + (nsem === 1 ? "1 semana" : nsem + " semanas") + "</b>.</li><li>O sorteio sai na <b>segunda-feira às 14h</b> e o prazo para jogar vai até o <b>domingo às 20h</b> " + (nsem === 1 ? "da mesma semana" : "da última semana da rodada") + ".</li></ul>")
+      + sec("Grupos e jogos", "<ul><li><b>Feminino e Masculino:</b> grupos de 4 pessoas, com 3 jogos trocando as duplas. Cada um joga uma vez com cada parceiro do grupo.</li><li><b>Mista:</b> grupos de 2 homens e 2 mulheres, com 2 jogos. A dupla é sempre 1 homem e 1 mulher.</li><li>Os jogos do grupo podem ser feitos em qualquer ordem, de preferência seguidos, no mesmo dia.</li></ul>")
+      + sec("Sorteio e folgas", "<ul><li>Os grupos saem de um número aleatório público, e qualquer um pode conferir na aba Sorteio.</li><li>O sorteio evita colocar no mesmo grupo quem já jogou junto na mesma categoria.</li><li>Quando o número de inscritos não fecha em grupos completos, algumas pessoas folgam. Folga quem folgou menos vezes até ali.</li><li><b>Folga não é W.O.:</b> ninguém perde ponto, só não joga naquela rodada.</li></ul>")
+      + sec("Pontuação", '<table class="pts-table"><tbody><tr><td>Vitória</td><td>10</td></tr><tr><td>Derrota</td><td>5</td></tr><tr><td>Participação (por jogo)</td><td>2</td></tr><tr><td>Cada game ganho</td><td>+1</td></tr><tr><td>W.O. (quem faltou)</td><td>0</td></tr></tbody></table>'
+        + '<p class="small muted">Exemplo: quem vence por 6×4 soma 10 + 2 + 6 = 18 pontos; quem perde soma 5 + 2 + 4 = 11.</p>')
+      + sec("Desempate", "<ol><li>Mais vitórias</li><li>Mais games ganhos</li><li>Maior saldo de games</li><li>Mais jogos disputados</li><li>Sorteio</li></ol>")
+      + sec("Como marcar o jogo", "<ul><li>Em <b>Meus jogos</b>, marque seus horários livres, separados para Feminino/Masculino e para Mista.</li><li>O grupo vê os horários em que os quatro podem.</li><li>Qualquer um do grupo marca o dia e a hora, e os quatro recebem um e-mail com o convite para a agenda.</li></ul>")
+      + sec("Placar", "<ul><li><b>Quem ganhou lança</b> o placar no app.</li><li><b>Um dos que perderam confirma</b>. Se estiver errado, contesta, e a organização decide.</li><li>Só conta jogo confirmado." + (aceitar ? " Se ninguém confirmar até o prazo, vale o placar lançado." : " Jogo sem confirmação até o prazo fica pendente até a organização decidir.") + "</li><li>Jogo depois do prazo só com liberação da organização.</li></ul>")
+      + sec("Faltas e coringa", "<ul><li>Quem não comparece fica com <b>W.O.</b> (0 ponto). Os pontos de quem compareceu, em caso de W.O., são definidos pela organização.</li><li>Se alguém não puder jogar, o grupo pode chamar um <b>coringa</b> inscrito no ranking. O coringa não pontua, e quem faltou fica com W.O.</li></ul>")
+      + sec("Acesso", "<ul><li>No primeiro acesso, cada jogador cria um código de 4 números e cadastra o e-mail.</li><li>O código é pessoal: não passe para ninguém. Se esquecer, fale com a organização.</li></ul>");
+  }
+
   /* ---------- render ---------- */
   function render() {
     renderTabs();
@@ -345,6 +429,7 @@
     if (S.tab === "semana") html += renderSemana();
     else if (S.tab === "ranking") html += renderRanking();
     else if (S.tab === "lancar") html += renderLancar();
+    else if (S.tab === "regras") html += renderRegras();
     else html += renderSorteio();
     m.innerHTML = html;
   }
@@ -360,14 +445,16 @@
     var t = e.target.closest("button"); if (!t) return;
     if (t.dataset.tab) { S.tab = t.dataset.tab; saveUi(); history.replaceState(null, "", "#" + S.tab); render(); window.scrollTo(0, 0); refreshIfStale(10000); return; }
     if (t.dataset.cat) { S.cat = t.dataset.cat; saveUi(); render(); return; }
-    if (t.dataset.slot && S.dispEdit) { if (S.dispEdit[t.dataset.slot]) delete S.dispEdit[t.dataset.slot]; else S.dispEdit[t.dataset.slot] = 1; t.setAttribute("aria-pressed", String(!!S.dispEdit[t.dataset.slot])); return; }
+    if (t.dataset.slot && S.dispEdit) { var se = S.dispEdit.sel; if (se[t.dataset.slot]) delete se[t.dataset.slot]; else se[t.dataset.slot] = 1; render(); return; }
+    if (t.dataset.day && S.dispEdit) { S.dispOpen[t.dataset.day] = !S.dispOpen[t.dataset.day]; render(); return; }
     if (t.dataset.period && S.dispEdit) {
-      var pp = t.dataset.period.split("|"), ids = [];
-      for (var hh = Number(pp[1]); hh <= Number(pp[2]); hh++) { var sid = slotId(pp[0], hh); if (document.querySelector('[data-slot="' + sid + '"]')) ids.push(sid); }
-      var allOn = ids.every(function (x) { return S.dispEdit[x]; });
-      ids.forEach(function (x) { if (allOn) delete S.dispEdit[x]; else S.dispEdit[x] = 1; });
+      var pp = t.dataset.period.split("|"), dd = weekDays(currentWeek()).filter(function (d) { return d.ymd === pp[0]; })[0], ids = [];
+      (dd ? dd.hours : []).forEach(function (h) { if (h >= Number(pp[1]) && h <= Number(pp[2])) ids.push(slotId(pp[0], h)); });
+      var sel2 = S.dispEdit.sel, allOn = ids.every(function (x) { return sel2[x]; });
+      ids.forEach(function (x) { if (allOn) delete sel2[x]; else sel2[x] = 1; });
       render(); return;
     }
+    if (t.dataset.pick && S.sched) { var mm = /^(.{10})T(\d{2})$/.exec(t.dataset.pick); S.sched.ymd = mm[1]; S.sched.h = Number(mm[2]); S.sched.local = ($("#slocal") || {}).value || S.sched.local; render(); return; }
     if (t.dataset.step) {
       var parts = t.dataset.step.split("|"), field = parts.pop(), key = parts.join("|"), f = S.forms[key] || (S.forms[key] = { nos: 0, eles: 0 });
       f[field] = Math.max(0, Math.min(7, f[field] + Number(t.dataset.d))); render(); return;
@@ -376,14 +463,31 @@
     if (!a) return;
     if (a === "open") { S.forms[k] = Object.assign({ nos: 0, eles: 0 }, S.forms[k], { mode: t.dataset.mode }); render(); return; }
     if (a === "cancel") { delete S.forms[k]; render(); return; }
-    if (a === "sair") { S.me = null; S.dispEdit = null; saveMe(); render(); return; }
-    if (a === "disp-edit") { S.dispEdit = {}; (dispOf(S.me.nome) || []).forEach(function (s) { S.dispEdit[s] = 1; }); render(); return; }
+    if (a === "sair") { S.me = null; S.dispEdit = null; S.sched = null; S.emailEdit = false; saveMe(); render(); return; }
+    if (a === "disp-edit") {
+      var tipo = t.dataset.tipo, sel = {}; (dispOf(S.me.nome, tipo) || []).forEach(function (s) { sel[s] = 1; });
+      S.dispEdit = { tipo: tipo, sel: sel }; S.dispOpen = {}; render(); return;
+    }
+    if (a === "disp-copy" && S.dispEdit) { var oth = S.dispEdit.tipo === "mista" ? "genero" : "mista"; S.dispEdit.sel = {}; (dispOf(S.me.nome, oth) || []).forEach(function (s) { S.dispEdit.sel[s] = 1; }); render(); return; }
     if (a === "disp-cancel") { S.dispEdit = null; render(); return; }
     if (a === "disp-save") {
-      var valid = validSlots(currentWeek()), keep = Object.keys(S.dispEdit).filter(function (s) { return valid[s]; }).sort();
-      act({ acao: "guardar", chave: "disp", alvo: "eu", valor: JSON.stringify(keep) }, keep.length ? "Horários salvos." : "Salvo: sem horário livre nesta semana.").then(function () { S.dispEdit = null; render(); });
+      var valid = validSlots(currentWeek()), keep = Object.keys(S.dispEdit.sel).filter(function (s) { return valid[s]; }).sort();
+      act({ acao: "guardar", chave: "disp_" + S.dispEdit.tipo, alvo: "eu", valor: JSON.stringify(keep) }, keep.length ? "Horários salvos." : "Salvo: sem horário livre nesta rodada.").then(function () { S.dispEdit = null; render(); });
       return;
     }
+    if (a === "sched-open") {
+      var ag = agendaOf(t.dataset.g), dd0 = weekDays(currentWeek())[0];
+      var m0 = ag && /^(.{10})T(\d{2})$/.exec(ag.quando || "");
+      S.sched = { key: t.dataset.g, ymd: m0 ? m0[1] : dd0 && dd0.ymd, h: m0 ? Number(m0[2]) : 19, local: ag ? ag.local : "" }; render(); return;
+    }
+    if (a === "sched-close") { S.sched = null; render(); return; }
+    if (a === "sched-cancel-game") {
+      if (S.armed !== "unsched:" + t.dataset.g) { S.armed = "unsched:" + t.dataset.g; t.textContent = "Toque de novo para desmarcar"; return; }
+      S.armed = null;
+      actSched({ acao: "agendar", grupo: t.dataset.g, desmarcar: true }, true); return;
+    }
+    if (a === "email-edit") { S.emailEdit = true; render(); return; }
+    if (a === "email-cancel") { S.emailEdit = false; render(); return; }
     if (a === "check") { checkWeek(t.dataset.w); return; }
     var j = S.data.jogos.filter(function (x) { return x.key === k; })[0];
     if (a === "confirmar") { act({ acao: "confirmar", jogo: k }, "Placar confirmado. Obrigado!"); return; }
@@ -399,8 +503,37 @@
   });
   document.addEventListener("change", function (e) {
     if (e.target.id === "lnome") { S.loginNome = e.target.value; S.loginErr = null; render(); var c = $("#lcod"); if (c) c.focus(); }
+    if (e.target.id === "sday" && S.sched) {
+      S.sched.ymd = e.target.value; S.sched.local = ($("#slocal") || {}).value || "";
+      var d1 = weekDays(currentWeek()).filter(function (d) { return d.ymd === S.sched.ymd; })[0];
+      if (d1 && d1.hours.indexOf(Number(S.sched.h)) < 0) S.sched.h = d1.hours[0];
+      render();
+    }
+    if (e.target.id === "shour" && S.sched) S.sched.h = Number(e.target.value);
   });
+  function actSched(body, desmarcar) {
+    S.busy = true; render();
+    return post(Object.assign({ nome: S.me.nome, codigo: S.me.codigo }, body)).then(function (r) {
+      var msg = desmarcar ? "Jogo desmarcado." : "Jogo marcado.";
+      if (r.enviados) msg += " E-mail enviado para " + r.enviados + (r.enviados > 1 ? " pessoas." : " pessoa.");
+      if (r.semEmail && r.semEmail.length) msg += " Sem e-mail cadastrado: " + r.semEmail.join(", ") + ". Avise no grupo.";
+      if (r.erroEmail) msg += " Não consegui enviar os e-mails agora.";
+      S.sched = null; toast(msg); return load();
+    }).catch(function (e) { toast(e.message); }).then(function () { S.busy = false; render(); });
+  }
   document.addEventListener("submit", function (e) {
+    if (e.target.classList.contains("sched") && S.sched) {
+      e.preventDefault();
+      S.sched.h = Number($("#shour").value); S.sched.ymd = $("#sday").value; S.sched.local = $("#slocal").value.trim();
+      actSched({ acao: "agendar", grupo: S.sched.key, quando: slotId(S.sched.ymd, S.sched.h), local: S.sched.local }, false);
+      return;
+    }
+    if (e.target.id === "emailf") {
+      e.preventDefault();
+      var em = $("#memail").value.trim();
+      act({ acao: "email", email: em }, "E-mail salvo.").then(function () { S.emailEdit = false; render(); });
+      return;
+    }
     if (e.target.id !== "login") return;
     e.preventDefault();
     var nome = $("#lnome").value, codigo = ($("#lcod") ? $("#lcod").value : "").trim(), c2 = $("#lcod2");
@@ -409,7 +542,9 @@
     if (c2) {
       if (!/^[0-9]{4}$/.test(codigo)) { S.loginErr = "O código precisa ter exatamente 4 números."; render(); return; }
       if (c2.value.trim() !== codigo) { S.loginErr = "Os dois códigos não são iguais. Digite de novo."; render(); return; }
-      first = post({ acao: "criar_codigo", nome: nome, codigo: codigo });
+      var em0 = ($("#lemail") ? $("#lemail").value : "").trim();
+      if (em0 && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em0)) { S.loginErr = "Confira o e-mail: parece incompleto."; render(); return; }
+      first = post({ acao: "criar_codigo", nome: nome, codigo: codigo, email: em0 });
     }
     S.busy = true; S.loginErr = null; render();
     first.then(function () { return post({ acao: "entrar", nome: nome, codigo: codigo }); }).then(function (d) {
@@ -419,10 +554,10 @@
     }).catch(function (err) { S.loginErr = err.message; }).then(function () { S.busy = false; render(); });
   });
 
-  function refreshIfStale(ms) { if (S.data && !S.busy && !S.dispEdit && !Object.keys(S.forms).length && Date.now() - (S.loadedAt || 0) > ms) load(); }
+  function refreshIfStale(ms) { if (S.data && !S.busy && !S.dispEdit && !S.sched && !S.emailEdit && !Object.keys(S.forms).length && Date.now() - (S.loadedAt || 0) > ms) load(); }
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") refreshIfStale(15000); });
 
   render();
   load();
-  setInterval(function () { if (document.visibilityState === "visible" && !S.busy && !Object.keys(S.forms).length && !S.dispEdit) load(); }, 60000);
+  setInterval(function () { if (document.visibilityState === "visible" && !S.busy && !Object.keys(S.forms).length && !S.dispEdit && !S.sched && !S.emailEdit && !document.querySelector("#emailf input:focus")) load(); }, 60000);
 })();

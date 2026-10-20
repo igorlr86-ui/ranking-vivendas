@@ -132,6 +132,23 @@ details summary{cursor:pointer;font-weight:600;color:var(--accent)}
 .hchip{min-height:40px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-weight:600;font-variant-numeric:tabular-nums;cursor:pointer}
 .hchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .pchip{border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:5px 10px;font-size:.8rem;font-weight:600;cursor:pointer;min-height:32px}
+.dday>.spread{flex-wrap:nowrap;gap:6px}
+.dday>.spread .row{flex-wrap:nowrap;flex:none}
+.dday .pchip{padding:5px 8px;font-size:.76rem}
+.dlabel{min-width:0;flex:1 1 auto;justify-content:flex-start}
+.dlabel{border:0;background:none;padding:6px 0;font:inherit;color:inherit;cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+.dcount{font-size:.75rem;font-weight:700;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 8px}
+.caret{color:var(--ink-2)}
+.pchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.dtipo{display:flex;flex-direction:column;gap:4px;padding:10px 0;border-top:1px dashed var(--line)}
+.small-btn{min-height:36px;padding:6px 12px;font-size:.88rem}
+.agenda{background:var(--ball-soft);border-radius:10px;padding:8px 12px;font-size:.92rem}
+.group .agenda{border-radius:0;padding:8px 14px}
+.regra ul,.regra ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.pts-table{width:auto;min-width:240px}
+.pts-table td{text-align:left;padding:6px 10px}
+.pts-table td:last-child{text-align:right;font-family:var(--display);font-size:1.2rem;font-weight:700}
+input[type=email]{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);min-height:44px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:10px;font-weight:600;z-index:9;max-width:calc(100% - 32px)}
 .loading{padding:40px 0;text-align:center;color:var(--ink-2)}
 </style>
@@ -147,8 +164,8 @@ details summary{cursor:pointer;font-weight:600;color:var(--accent)}
   <main id="main" class="stack"><div class="loading">Carregando o ranking… pode levar alguns segundos.</div></main>
 </div>
 <div id="toast" class="toast" hidden></div>
-<script src="sorteio.js?v=1792491556"></script>
-<script src="config.js?v=1792491556"></script>
-<script src="app.js?v=1792491556"></script>
+<script src="sorteio.js?v=1792515405"></script>
+<script src="config.js?v=1792515405"></script>
+<script src="app.js?v=1792515405"></script>
 </body>
 </html>

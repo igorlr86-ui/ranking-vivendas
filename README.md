@@ -6,10 +6,12 @@ Ranking individual de beach tennis do Vivendas da Mata: grupos da semana, lança
 
 ## Como funciona
 
-- **Sorteio:** toda segunda-feira às 14h (Brasília), a rede pública [drand](https://drand.love) (League of Entropy, rede *quicknet*) divulga um número aleatório assinado. Os grupos da semana saem desse número, com uma conta que qualquer pessoa pode refazer na aba **Sorteio** da página. Ninguém da organização escolhe nem consegue prever o resultado.
+- **Rodadas:** cada rodada dura 2 semanas (aba *Config* da planilha: `semanas_por_rodada`). Começa na segunda às 14h e o prazo vai até o domingo às 20h da última semana.
+- **Sorteio:** na segunda-feira às 14h do início de cada rodada (Brasília), a rede pública [drand](https://drand.love) (League of Entropy, rede *quicknet*) divulga um número aleatório assinado. Os grupos da rodada saem desse número, com uma conta que qualquer pessoa pode refazer na aba **Sorteio** da página. Ninguém da organização escolhe nem consegue prever o resultado.
 - **Formato:** Feminino e Masculino em grupos de 4, com 3 jogos trocando as duplas; Mista em grupos de 2 homens + 2 mulheres, com 2 jogos. Os jogos do grupo podem ser feitos em qualquer ordem.
-- **Sem repetir:** a partir da semana de 26/10/2026, o sorteio evita colocar no mesmo grupo quem já jogou junto na mesma categoria. Quando isso deixar de ser possível, escolhe a combinação com menos repetições. Na Mista, quem folgou menos vezes tem a vez de folgar.
-- **Acesso:** no primeiro acesso cada jogador cria o próprio código de 4 números. Se alguém criar no nome de outra pessoa, a organização apaga o código na planilha e a pessoa cria de novo.
+- **Sem repetir:** a partir da rodada de 02/11/2026, o sorteio evita colocar no mesmo grupo quem já jogou junto na mesma categoria. Quando isso deixar de ser possível, escolhe a combinação com menos repetições. Na Mista, quem folgou menos vezes tem a vez de folgar.
+- **Horários e agendamento:** cada jogador marca os horários livres da rodada, separados para Feminino/Masculino e para Mista; o grupo vê quando os quatro podem. Qualquer um do grupo marca o dia e a hora do jogo, e os quatro recebem e-mail com convite de agenda (.ics), enviado pela conta Google dona da planilha (rode `autorizarEmail` uma vez no Apps Script).
+- **Acesso:** no primeiro acesso cada jogador cria o próprio código de 4 números e cadastra o e-mail. Se alguém criar no nome de outra pessoa, a organização apaga o código na planilha e a pessoa cria de novo.
 - **Placar:** quem ganhou lança; um dos que perderam confirma (ou contesta). Só conta jogo confirmado. Se ninguém confirmar até domingo às 20h, vale o placar lançado (regra configurável na aba *Config* da planilha: `sem_validacao` = `aceitar` ou `pendente`).
 - **Pontos:** vitória 10, derrota 5, participação 2, +1 por game ganho. Desempate: vitórias, games ganhos, saldo de games, jogos disputados.
 
