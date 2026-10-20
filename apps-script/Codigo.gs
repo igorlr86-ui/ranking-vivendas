@@ -291,6 +291,8 @@ var SEMANAS_HEAD = ["id", "inicio", "prazo", "metodo", "rodada", "randomness", "
 var PLACARES_HEAD = ["quando", "semana", "categoria", "grupo", "jogo", "acao", "jogador", "lado", "games_lado1", "games_lado2", "obs"];
 function semanasSheet_() { return sheet_("Semanas", SEMANAS_HEAD); }
 function placaresSheet_() { return sheet_("Placares", PLACARES_HEAD); }
+var DADOS_HEAD = ["semana", "alvo", "jogador", "chave", "valor", "atualizado_em"];
+function dadosSheet_() { return sheet_("Dados", DADOS_HEAD); }
 function configSheet_() { return sheet_("Config", ["chave", "valor"]); }
 function jogadoresSheet_() {
   var named = ss_().getSheetByName("Jogadores");
@@ -472,6 +474,7 @@ function doGet(e) {
       ranking: ranking_(st.jogos),
       proximo: weekMeta_(nextStart),
       regras: { sem_validacao: st.cfg.sem_validacao || "aceitar" },
+      dados: dadosPublicos_(st),
       jogadores: jogadores_().map(function (p) { return { nome: p.nome, sexo: p.sexo, categorias: p.categorias, temCodigo: !!p.codigo }; })
     });
   } catch (err) { return json_({ ok: false, erro: String(err && err.message || err) }); }
@@ -519,12 +522,55 @@ function criarCodigo_(nome, codigo) {
     throw new Error("Nome não encontrado na lista de jogadores.");
   } finally { lock.releaseLock(); }
 }
+/* ---- dados livres por semana (disponibilidade de horários e futuros recursos) ----
+ * alvo "eu": dado do próprio jogador na semana atual; alvo = chave de um jogo: dado daquele jogo
+ * (só quem está no jogo, ou a organização, grava). Cada jogador só altera as próprias linhas. */
+function semanaAtualId_(weeks) { return weeks.length ? weeks[weeks.length - 1].id : ""; }
+function dadosPublicos_(st) {
+  var atual = semanaAtualId_(st.weeks);
+  return rows_(dadosSheet_()).filter(function (r) { return r.semana === atual; }).map(function (r) {
+    return { alvo: r.alvo, jogador: r.jogador, chave: r.chave, valor: r.valor, quando: r.atualizado_em };
+  });
+}
+function guardar_(who, req) {
+  var chave = norm_(req.chave), alvo = norm_(req.alvo || "eu"), valor = req.valor === null || req.valor === undefined ? "" : String(req.valor);
+  if (!/^[a-z][a-z0-9_]{0,23}$/.test(chave)) throw new Error("Chave inválida.");
+  if (valor.length > 4000) throw new Error("Conteúdo grande demais.");
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var st = estadoCompleto_(), semana;
+    if (alvo === "eu") {
+      semana = semanaAtualId_(st.weeks);
+      if (!semana) throw new Error("Ainda não há semana sorteada.");
+    } else {
+      var j = st.jogos.filter(function (x) { return x.key === alvo; })[0];
+      if (!j) throw new Error("Jogo não encontrado.");
+      if (!who.admin && j.lado1.indexOf(who.nome) < 0 && j.lado2.indexOf(who.nome) < 0) throw new Error("Você não está neste jogo.");
+      semana = j.semana;
+    }
+    var sh = dadosSheet_(), v = sh.getDataRange().getValues(), head = v[0].map(String);
+    var idx = function (h) { return head.indexOf(h); };
+    var line = [semana, alvo, who.nome, chave, valor, new Date().toISOString()].map(function (x) { return "'" + x; });
+    for (var r = 1; r < v.length; r++) {
+      if (cell_("semana", v[r][idx("semana")]) === semana && cell_("alvo", v[r][idx("alvo")]) === alvo &&
+          cell_("jogador", v[r][idx("jogador")]) === who.nome && cell_("chave", v[r][idx("chave")]) === chave) {
+        sh.getRange(r + 1, 1, 1, line.length).setValues([line]);
+        SpreadsheetApp.flush();
+        return { ok: true };
+      }
+    }
+    sh.appendRow(line);
+    SpreadsheetApp.flush();
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
 function doPost(e) {
   try {
     var req = JSON.parse(e.postData.contents || "{}");
     if (req.acao === "criar_codigo") return json_(criarCodigo_(req.nome, req.codigo));
     var who = autenticar_(req.nome, req.codigo);
     if (req.acao === "entrar") return json_({ ok: true, nome: who.nome, admin: who.admin });
+    if (req.acao === "guardar") return json_(guardar_(who, req));
     var lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {

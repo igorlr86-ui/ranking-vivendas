@@ -125,6 +125,13 @@ tr.me td{background:var(--accent-soft)}
 .facts dt{color:var(--ink-2);font-weight:600}
 .facts dd{margin:0;min-width:0}
 details summary{cursor:pointer;font-weight:600;color:var(--accent)}
+.avail{padding:8px 14px 10px;display:flex;flex-direction:column;gap:3px;background:var(--accent-soft);border-top:1px solid var(--line)}
+.mycard .avail{margin:0 -14px -14px;padding-inline:14px;border-radius:0 0 var(--r) var(--r)}
+.dday{display:flex;flex-direction:column;gap:8px;padding-bottom:12px;border-bottom:1px dashed var(--line)}
+.hours{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
+.hchip{min-height:40px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-weight:600;font-variant-numeric:tabular-nums;cursor:pointer}
+.hchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.pchip{border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:5px 10px;font-size:.8rem;font-weight:600;cursor:pointer;min-height:32px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:10px;font-weight:600;z-index:9;max-width:calc(100% - 32px)}
 .loading{padding:40px 0;text-align:center;color:var(--ink-2)}
 </style>
@@ -140,8 +147,8 @@ details summary{cursor:pointer;font-weight:600;color:var(--accent)}
   <main id="main" class="stack"><div class="loading">Carregando o ranking… pode levar alguns segundos.</div></main>
 </div>
 <div id="toast" class="toast" hidden></div>
-<script src="sorteio.js?v=1792434757"></script>
-<script src="config.js?v=1792434757"></script>
-<script src="app.js?v=1792434757"></script>
+<script src="sorteio.js?v=1792491556"></script>
+<script src="config.js?v=1792491556"></script>
+<script src="app.js?v=1792491556"></script>
 </body>
 </html>
