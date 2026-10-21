@@ -31,6 +31,12 @@
     return d >= 1 ? "faltam " + d + (d > 1 ? " dias" : " dia") + " e " + (h % 24) + " h" : "faltam " + h + " h " + (Math.floor(ms / 60e3) % 60) + " min";
   }
   function names(p) { return esc(p[0]) + " e " + esc(p[1]); }
+  // Nome exibido no jogo: quem faltou aparece como o coringa que jogou no lugar.
+  function nomeJ(j, p) { return j && j.coringa && j.coringa.ausente === p ? esc(j.coringa.coringa) + ' <span class="cor">(coringa)</span>' : esc(p); }
+  function namesJ(j, l) { return nomeJ(j, l[0]) + " e " + nomeJ(j, l[1]); }
+  function coringaNote(j) {
+    return j.coringa ? '<p class="small cornote">🃏 <b>' + esc(j.coringa.coringa) + "</b> jogou de coringa no lugar de <b>" + esc(j.coringa.ausente) + "</b>, que fica com W.O. O coringa não pontua.</p>" : "";
+  }
   var toastT;
   function toast(msg) { var t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, Math.min(9000, 3000 + msg.length * 35)); }
 
@@ -224,7 +230,8 @@
     var has = !!j.placar && j.status !== "sem_placar", a = has ? j.placar[0] : null, b = has ? j.placar[1] : null;
     var w1 = has && a > b, w2 = has && b > a;
     return '<div class="game"><div class="spread"><span class="small muted">' + esc(label || ("Jogo " + j.jogo)) + "</span>" + statusPill(j) + "</div>"
-      + '<div class="teams"><span class="' + (w1 ? "win" : "") + '">' + names(j.lado1) + '</span><span class="sc ' + (has ? "" : "none") + '">' + (has ? a + "×" + b : "×") + '</span><span class="r ' + (w2 ? "win" : "") + '">' + names(j.lado2) + "</span></div>"
+      + '<div class="teams"><span class="' + (w1 ? "win" : "") + '">' + namesJ(j, j.lado1) + '</span><span class="sc ' + (has ? "" : "none") + '">' + (has ? a + "×" + b : "×") + '</span><span class="r ' + (w2 ? "win" : "") + '">' + namesJ(j, j.lado2) + "</span></div>"
+      + coringaNote(j)
       + (j.status === "contestado" ? '<p class="small muted">' + esc(j.proposta.por) + " lançou " + j.proposta.placar[0] + "×" + j.proposta.placar[1] + "; " + esc(j.contestacao.por) + " contestou com " + j.contestacao.placar[0] + "×" + j.contestacao.placar[1] + ". A organização decide.</p>" : "")
       + (j.status === "aguardando" ? '<p class="small muted">Lançado por ' + esc(j.proposta.por) + " em " + fmtStamp(j.proposta.quando) + ".</p>" : "")
       + (j.status === "confirmado" && j.confirmadoPor ? '<p class="small muted">Lançado por ' + esc(j.proposta.por) + ", confirmado por " + esc(j.confirmadoPor) + ".</p>" : "")
@@ -268,11 +275,17 @@
     if (!rows.length) return head + '<div class="panel"><p>Ainda não há jogos confirmados nesta categoria.</p></div>';
     var meName = S.me && S.me.nome;
     return head + '<div class="tablewrap"><table><thead><tr><th class="l">#</th><th class="l">Jogador</th><th>Pts</th><th>J</th><th>V</th><th>D</th><th>Games</th><th>Saldo</th></tr></thead><tbody>'
-      + rows.map(function (r, i) {
-        var s = r.gamesPro - r.gamesContra;
-        return '<tr class="' + (r.nome === meName ? "me" : "") + '"><td class="l"><span class="pos ' + (i < 3 ? "g" + (i + 1) : "") + '">' + (i + 1) + '</span></td><td class="l">' + esc(r.nome) + '</td><td class="pts">' + r.pontos + "</td><td>" + r.jogos + "</td><td>" + r.vitorias + "</td><td>" + r.derrotas + "</td><td>" + r.gamesPro + "</td><td>" + (s > 0 ? "+" : "") + s + "</td></tr>";
-      }).join("") + "</tbody></table></div>"
-      + '<p class="small muted">Vitória 10 · derrota 5 · participação 2 · +1 por game ganho. Desempate: vitórias, games ganhos, saldo de games e jogos disputados. Só entram jogos confirmados.</p>';
+      + (function () {
+        // Empate total (mesmos pontos, vitórias, games, saldo e jogos) fica na mesma posição; o regulamento manda sortear.
+        var keyOf = function (r) { return [r.pontos, r.vitorias, r.gamesPro, r.gamesPro - r.gamesContra, r.jogos].join("|"); };
+        var pos = [], tie = {};
+        rows.forEach(function (r, i) { pos[i] = i && keyOf(r) === keyOf(rows[i - 1]) ? pos[i - 1] : i + 1; });
+        rows.forEach(function (r, i) { if ((i && pos[i] === pos[i - 1]) || (i + 1 < rows.length && pos[i] === pos[i + 1])) tie[i] = 1; });
+        return rows.map(function (r, i) {
+        var s = r.gamesPro - r.gamesContra, n = pos[i];
+        return '<tr class="' + (r.nome === meName ? "me" : "") + '"><td class="l"><span class="pos ' + (n <= 3 ? "g" + n : "") + '">' + n + '</span></td><td class="l">' + esc(r.nome) + (r.wo ? ' <span class="wo">' + r.wo + " W.O.</span>" : "") + (tie[i] ? ' <span class="tie">empate</span>' : "") + '</td><td class="pts">' + r.pontos + "</td><td>" + r.jogos + "</td><td>" + r.vitorias + "</td><td>" + r.derrotas + "</td><td>" + r.gamesPro + "</td><td>" + (s > 0 ? "+" : "") + s + "</td></tr>";
+      }).join(""); })() + "</tbody></table></div>"
+      + '<p class="small muted">Vitória 10 · derrota 5 · participação 2 · +1 por game ganho. W.O. vale 0 ponto. “Empate” marca quem está igual em todos os critérios: a organização sorteia a posição. Desempate: vitórias, games ganhos, saldo de games e jogos disputados. Só entram jogos confirmados.</p>';
   }
 
   /* ---- lançar ---- */
@@ -286,6 +299,22 @@
     return '<div class="stack" style="gap:10px"><b class="small">' + title + '</b><div class="scorebox">' + stepper(j.key + "|nos", labels[0], f.nos) + stepper(j.key + "|eles", labels[1], f.eles) + "</div>"
       + '<div class="row"><button class="btn" type="button" data-act="' + mode + '" data-k="' + esc(j.key) + '"' + (S.busy ? " disabled" : "") + ">" + (mode === "contestar" ? "Enviar contestação" : mode === "decidir" ? "Definir placar" : "Enviar placar") + "</button>"
       + '<button class="link" type="button" data-act="cancel" data-k="' + esc(j.key) + '">Cancelar</button></div></div>';
+  }
+  function coringaBox(j) {
+    var me = S.me && S.me.nome, admin = S.me && S.me.admin, closed = Date.now() > new Date(j.prazo);
+    if (!admin && closed) return "";
+    var f = S.cor && S.cor.key === j.key ? S.cor : null, gente = j.lado1.concat(j.lado2);
+    if (j.coringa && !f) return '<div class="row"><button class="link" type="button" data-act="cor-del" data-k="' + esc(j.key) + '">Remover coringa</button></div>';
+    if (!f) return '<div class="row"><button class="link" type="button" data-act="cor-open" data-k="' + esc(j.key) + '">Teve coringa neste jogo?</button></div>';
+    var aus = gente.filter(function (p) { return admin || p !== me; });
+    var w = currentWeek(), d = w && w.sorteio[j.categoria], folga = (d && d.byes) || [];
+    var cand = (S.data.jogadores || []).filter(function (p) { return p.categorias.indexOf(j.categoria) >= 0 && gente.indexOf(p.nome) < 0; }).map(function (p) { return p.nome; })
+      .sort(function (x, y) { return (folga.indexOf(y) >= 0) - (folga.indexOf(x) >= 0) || x.localeCompare(y, "pt-BR"); });
+    return '<form class="stack corf" style="gap:10px" data-k="' + esc(j.key) + '"><b class="small">Coringa neste jogo</b>'
+      + '<div class="field"><label for="caus">Quem faltou</label><select id="caus" required><option value="">Escolha…</option>' + aus.map(function (p) { return "<option" + (f.ausente === p ? " selected" : "") + ">" + esc(p) + "</option>"; }).join("") + "</select></div>"
+      + '<div class="field"><label for="ccor">Quem jogou de coringa</label><select id="ccor" required><option value="">Escolha…</option>' + cand.map(function (p) { return "<option" + (f.coringa === p ? " selected" : "") + ">" + esc(p) + (folga.indexOf(p) >= 0 ? " (de folga)" : "") + "</option>"; }).join("") + "</select></div>"
+      + '<p class="small muted">Pelo regulamento, quem faltou fica com W.O. (0 ponto) e o coringa não pontua. Os outros três pontuam normalmente.</p>'
+      + '<div class="row"><button class="btn" type="submit"' + (S.busy ? " disabled" : "") + '>Salvar coringa</button><button class="link" type="button" data-act="cor-close">Cancelar</button></div></form>';
   }
   function myGameCard(j) {
     var me = S.me.nome, side = sideOf(j, me), mine = side === 1 ? j.lado1 : j.lado2, opp = side === 1 ? j.lado2 : j.lado1;
@@ -304,7 +333,7 @@
     } else if (j.status === "contestado") body = "<p>Placar em disputa. A organização vai decidir.</p>" + (closed ? "" : '<button class="link" type="button" data-act="open" data-mode="lancar" data-k="' + esc(j.key) + '">As duas duplas chegaram a um acordo? Lance o placar certo</button>');
     else { var s2 = my(j.placar); body = "<p><b>" + s2[0] + " × " + s2[1] + "</b> · " + (j.status === "confirmado" ? "confirmado" : j.status === "decidido" ? "definido pela organização" : "valeu por prazo") + ".</p>"; }
     return '<article class="mycard"><div class="spread"><span class="cat">' + esc(j.categoria) + " · Grupo " + esc(j.grupo) + "</span>" + statusPill(j) + "</div>"
-      + "<p>Com <b>" + esc(partner) + "</b> contra " + names(opp) + "</p>" + body + "</article>";
+      + "<p>Com <b>" + nomeJ(j, partner) + "</b> contra " + namesJ(j, opp) + "</p>" + body + coringaBox(j) + "</article>";
   }
   function renderLogin() {
     var js = (S.data.jogadores || []).slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, "pt-BR"); });
@@ -361,7 +390,7 @@
     var card = function (j) {
       var f = S.forms[j.key];
       return '<article class="mycard"><div class="spread"><span class="cat">' + esc(j.semana) + " · " + esc(j.categoria) + " · Grupo " + esc(j.grupo) + " · Jogo " + j.jogo + "</span>" + statusPill(j) + "</div>"
-        + gameRow(j, " ") + (f && f.mode ? scoreForm(j, "decidir") : '<div class="row"><button class="btn ghost" type="button" data-act="open" data-mode="decidir" data-k="' + esc(j.key) + '">Definir placar</button><button class="btn warn" type="button" data-act="anular" data-k="' + esc(j.key) + '">Apagar lançamentos</button></div>') + "</article>";
+        + gameRow(j, " ") + coringaBox(j) + (f && f.mode ? scoreForm(j, "decidir") : '<div class="row"><button class="btn ghost" type="button" data-act="open" data-mode="decidir" data-k="' + esc(j.key) + '">Definir placar</button><button class="btn warn" type="button" data-act="anular" data-k="' + esc(j.key) + '">Apagar lançamentos</button></div>') + "</article>";
     };
     return '<div class="info">Modo organização: você pode definir o placar de qualquer jogo (inclusive fora do prazo) ou apagar os lançamentos.</div>'
       + "<h2>Pendentes e em disputa</h2>" + (js.length ? '<div class="stack">' + js.map(card).join("") + "</div>" : '<p class="muted">Nada pendente.</p>')
@@ -463,7 +492,7 @@
     if (!a) return;
     if (a === "open") { S.forms[k] = Object.assign({ nos: 0, eles: 0 }, S.forms[k], { mode: t.dataset.mode }); render(); return; }
     if (a === "cancel") { delete S.forms[k]; render(); return; }
-    if (a === "sair") { S.me = null; S.dispEdit = null; S.sched = null; S.emailEdit = false; saveMe(); render(); return; }
+    if (a === "sair") { S.me = null; S.dispEdit = null; S.sched = null; S.emailEdit = false; S.cor = null; saveMe(); render(); return; }
     if (a === "disp-edit") {
       var tipo = t.dataset.tipo, sel = {}; (dispOf(S.me.nome, tipo) || []).forEach(function (s) { sel[s] = 1; });
       S.dispEdit = { tipo: tipo, sel: sel }; S.dispOpen = {}; render(); return;
@@ -485,6 +514,12 @@
       if (S.armed !== "unsched:" + t.dataset.g) { S.armed = "unsched:" + t.dataset.g; t.textContent = "Toque de novo para desmarcar"; return; }
       S.armed = null;
       actSched({ acao: "agendar", grupo: t.dataset.g, desmarcar: true }, true); return;
+    }
+    if (a === "cor-open") { S.cor = { key: k, ausente: "", coringa: "" }; render(); return; }
+    if (a === "cor-close") { S.cor = null; render(); return; }
+    if (a === "cor-del") {
+      if (S.armed !== "cor:" + k) { S.armed = "cor:" + k; t.textContent = "Toque de novo para remover o coringa"; return; }
+      S.armed = null; act({ acao: "guardar", chave: "coringa", alvo: k, valor: "" }, "Coringa removido."); return;
     }
     if (a === "email-edit") { S.emailEdit = true; render(); return; }
     if (a === "email-cancel") { S.emailEdit = false; render(); return; }
@@ -528,6 +563,14 @@
       actSched({ acao: "agendar", grupo: S.sched.key, quando: slotId(S.sched.ymd, S.sched.h), local: S.sched.local }, false);
       return;
     }
+    if (e.target.classList.contains("corf") && S.cor) {
+      e.preventDefault();
+      var ausv = $("#caus").value, corv = $("#ccor").value.replace(/ \(de folga\)$/, "");
+      if (!ausv || !corv) { toast("Escolha quem faltou e quem foi o coringa."); return; }
+      var kk = S.cor.key;
+      act({ acao: "guardar", chave: "coringa", alvo: kk, valor: JSON.stringify({ ausente: ausv, coringa: corv }) }, "Coringa registrado: " + ausv.split(" ")[0] + " fica com W.O.").then(function () { S.cor = null; render(); });
+      return;
+    }
     if (e.target.id === "emailf") {
       e.preventDefault();
       var em = $("#memail").value.trim();
@@ -554,10 +597,10 @@
     }).catch(function (err) { S.loginErr = err.message; }).then(function () { S.busy = false; render(); });
   });
 
-  function refreshIfStale(ms) { if (S.data && !S.busy && !S.dispEdit && !S.sched && !S.emailEdit && !Object.keys(S.forms).length && Date.now() - (S.loadedAt || 0) > ms) load(); }
+  function refreshIfStale(ms) { if (S.data && !S.busy && !S.dispEdit && !S.sched && !S.emailEdit && !S.cor && !Object.keys(S.forms).length && Date.now() - (S.loadedAt || 0) > ms) load(); }
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") refreshIfStale(15000); });
 
   render();
   load();
-  setInterval(function () { if (document.visibilityState === "visible" && !S.busy && !Object.keys(S.forms).length && !S.dispEdit && !S.sched && !S.emailEdit && !document.querySelector("#emailf input:focus")) load(); }, 60000);
+  setInterval(function () { if (document.visibilityState === "visible" && !S.busy && !Object.keys(S.forms).length && !S.dispEdit && !S.sched && !S.emailEdit && !S.cor && !document.querySelector("#emailf input:focus")) load(); }, 60000);
 })();

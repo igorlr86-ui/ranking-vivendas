@@ -225,18 +225,30 @@ function estadoCompleto_() {
   var cfg = config_(), now = Date.now(), weeks = semanas_();
   var ev = {}; rows_(placaresSheet_()).forEach(function (e) { var k = [e.semana, e.categoria, e.grupo, e.jogo].join("|"); (ev[k] = ev[k] || []).push(e); });
   var jogos = [];
-  weeks.forEach(function (w) { jogosDaSemana_(w).forEach(function (j) { var s = avaliar_(j, ev[j.key] || [], cfg, now); for (var x in s) j[x] = s[x]; jogos.push(j); }); });
+  var cor = coringas_();
+  weeks.forEach(function (w) { jogosDaSemana_(w).forEach(function (j) { var s = avaliar_(j, ev[j.key] || [], cfg, now); for (var x in s) j[x] = s[x]; j.coringa = cor[j.key] || null; jogos.push(j); }); });
   return { cfg: cfg, now: now, weeks: weeks, jogos: jogos };
+}
+/** Coringas marcados por jogo (aba Dados, chave "coringa"): { chaveDoJogo: {ausente, coringa, por} }. */
+function coringas_() {
+  var out = {};
+  rows_(dadosSheet_()).forEach(function (r) {
+    if (r.chave !== "coringa" || !r.valor) return;
+    try { var v = JSON.parse(r.valor); if (v && v.ausente) out[r.alvo] = v; } catch (e) {}
+  });
+  return out;
 }
 function ranking_(jogos) {
   var R = {};
   CATS.forEach(function (c) { R[c] = {}; });
   jogos.forEach(function (j) {
     if (!j.conta) return;
-    var t = R[j.categoria], a = j.placar[0], b = j.placar[1];
+    var t = R[j.categoria], a = j.placar[0], b = j.placar[1], aus = j.coringa && j.coringa.ausente;
     [[j.lado1, a, b], [j.lado2, b, a]].forEach(function (x) {
       x[0].forEach(function (p) {
-        var r = t[p] = t[p] || { nome: p, pontos: 0, jogos: 0, vitorias: 0, derrotas: 0, gamesPro: 0, gamesContra: 0 };
+        var r = t[p] = t[p] || { nome: p, pontos: 0, jogos: 0, vitorias: 0, derrotas: 0, gamesPro: 0, gamesContra: 0, wo: 0 };
+        // Regra do coringa: quem faltou fica com W.O. (0 ponto) e o coringa não pontua.
+        if (p === aus) { r.wo++; return; }
         r.jogos++; r.gamesPro += x[1]; r.gamesContra += x[2];
         if (x[1] > x[2]) { r.vitorias++; r.pontos += 10; } else { r.derrotas++; r.pontos += 5; }
         r.pontos += 2 + x[1];
@@ -276,7 +288,7 @@ function doGet(e) {
 }
 function publicJogo_(j) {
   return { key: j.key, semana: j.semana, categoria: j.categoria, grupo: j.grupo, jogo: j.jogo, lado1: j.lado1, lado2: j.lado2, prazo: j.prazo,
-    status: j.status, placar: j.placar, proposta: j.proposta, contestacao: j.contestacao, confirmadoPor: j.confirmadoPor || null, decisao: j.decisao, conta: j.conta };
+    status: j.status, placar: j.placar, proposta: j.proposta, contestacao: j.contestacao, confirmadoPor: j.confirmadoPor || null, decisao: j.decisao, conta: j.conta, coringa: j.coringa || null };
 }
 
 /* ---- identificação com limite de tentativas (5 erros por nome a cada 15 min) ---- */
@@ -325,9 +337,28 @@ function criarCodigo_(nome, codigo, email) {
 function semanaAtualId_(weeks) { return weeks.length ? weeks[weeks.length - 1].id : ""; }
 function dadosPublicos_(st) {
   var atual = semanaAtualId_(st.weeks);
-  return rows_(dadosSheet_()).filter(function (r) { return r.semana === atual; }).map(function (r) {
+  return rows_(dadosSheet_()).filter(function (r) { return r.semana === atual || r.chave === "coringa"; }).map(function (r) {
     return { alvo: r.alvo, jogador: r.jogador, chave: r.chave, valor: r.valor, quando: r.atualizado_em };
   });
+}
+function marcarCoringa_(who, alvo, valor, st) {
+  var j = st.jogos.filter(function (x) { return x.key === alvo; })[0];
+  if (!j) throw new Error("Jogo não encontrado.");
+  var gente = j.lado1.concat(j.lado2);
+  if (!who.admin && gente.indexOf(who.nome) < 0) throw new Error("Você não está neste jogo.");
+  if (!who.admin && Date.now() > Date.parse(j.prazo)) throw new Error("O prazo desta rodada acabou. Fale com a organização.");
+  var v = "";
+  if (valor) {
+    var o; try { o = JSON.parse(valor); } catch (e) { throw new Error("Dados do coringa inválidos."); }
+    var aus = norm_(o.ausente), cor = norm_(o.coringa).slice(0, 40);
+    if (gente.indexOf(aus) < 0) throw new Error("Quem faltou precisa ser um dos quatro do jogo.");
+    if (!cor) throw new Error("Informe quem jogou de coringa.");
+    if (gente.indexOf(cor) >= 0) throw new Error("O coringa não pode ser alguém que já está no jogo.");
+    if (aus === who.nome && !who.admin) throw new Error("Quem marca o coringa é um dos que jogaram.");
+    v = JSON.stringify({ ausente: aus, coringa: cor, por: who.nome });
+  }
+  guardarLinha_(j.semana, alvo, "Jogo", "coringa", v);
+  return { ok: true };
 }
 function guardar_(who, req) {
   var chave = norm_(req.chave), alvo = norm_(req.alvo || "eu"), valor = req.valor === null || req.valor === undefined ? "" : String(req.valor);
@@ -337,6 +368,7 @@ function guardar_(who, req) {
   try {
     var st = estadoCompleto_(), semana;
     if (/^grupo:/.test(alvo)) throw new Error("Use o agendamento do grupo.");
+    if (chave === "coringa") return marcarCoringa_(who, alvo, valor, st);
     if (alvo === "eu") {
       semana = semanaAtualId_(st.weeks);
       if (!semana) throw new Error("Ainda não há semana sorteada.");
