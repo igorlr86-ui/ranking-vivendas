@@ -162,11 +162,62 @@ function ajustarPrazoAtual_(cfg) {
   var ini = Date.parse(cell_("inicio", v[lastRow][iIni])), want = new Date(prazoDe_(ini, semanasPorRodada_(cfg))).toISOString();
   if (cell_("prazo", v[lastRow][iPr]) !== want) sh.getRange(lastRow + 1, iPr + 1).setValue("'" + want);
 }
+/* Grupos incluídos pela organização depois do sorteio. Ficam fora da conferência do sorteio
+   (que confere só o que saiu do número público) e entram no histórico para os próximos sorteios. */
+var GRUPOS_EXTRAS = {
+  "2026-10-19": { Feminino: { grupos: [["Geruza", "Patricia", "Maria Eduarda Barbieri", "Alicia"]],
+    nota: "O Grupo E foi incluído pela organização em 22/10, com a entrada da Geruza no ranking: ela joga com as três que estavam de folga. Os grupos A a D são os do sorteio." } }
+};
+function comExtras_(id, draw) {
+  var ex = GRUPOS_EXTRAS[id]; if (!ex) return draw;
+  var out = JSON.parse(JSON.stringify(draw));
+  Object.keys(ex).forEach(function (c) {
+    var d = out[c] = out[c] || { groups: [], byes: [] }, usados = [];
+    ex[c].grupos.forEach(function (g) { d.groups.push(g.slice()); usados = usados.concat(g); });
+    d.byes = (d.byes || []).filter(function (n) { return usados.indexOf(n) < 0; });
+  });
+  return out;
+}
+function notasExtras_(id) {
+  var ex = GRUPOS_EXTRAS[id], o = {}; if (!ex) return null;
+  Object.keys(ex).forEach(function (c) { o[c] = ex[c].nota; });
+  return o;
+}
 function semanas_() {
   return rows_(semanasSheet_()).map(function (r) {
+    var sorteado = JSON.parse(r.sorteio || "{}");
     return { id: r.id, inicio: r.inicio, prazo: r.prazo, method: r.metodo, rodada: Number(r.rodada), randomness: r.randomness,
-      assinatura: r.assinatura, lists: JSON.parse(r.listas || "{}"), draw: JSON.parse(r.sorteio || "{}") };
+      assinatura: r.assinatura, lists: JSON.parse(r.listas || "{}"), draw: comExtras_(r.id, sorteado), sorteado: sorteado, extras: notasExtras_(r.id) };
   }).sort(function (a, b) { return a.id < b.id ? -1 : 1; });
+}
+
+/* ================= ajuste de 22/10/2026 (rodar uma vez no Apps Script) ================= */
+// Inclui a Geruza (Feminino e Mista) e cancela os 3 jogos do Feminino, Grupo D, da rodada de 19/10,
+// que serão jogados de novo: apaga os placares lançados e o coringa marcado.
+function ajustes22out() {
+  var cfg = config_();
+  if (cfg.ajuste_22out) return "Este ajuste já foi feito em " + cfg.ajuste_22out + ". Nada foi alterado.";
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  var msg = [];
+  try {
+    if (!jogadores_().some(function (p) { return p.nome === "Geruza"; })) {
+      var sh = jogadoresSheet_(), head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+      sh.appendRow(head.map(function (h) { return h === "Jogador" ? "Geruza" : h === "Categorias" ? "Feminino, Mista" : h === "Sexo" ? "F" : ""; }));
+      msg.push("Geruza incluída (Feminino e Mista).");
+    } else msg.push("Geruza já estava na lista.");
+    var st = estadoCompleto_(), agora = new Date().toISOString(), n = 0, c = 0;
+    st.jogos.filter(function (j) { return j.semana === "2026-10-19" && j.categoria === "Feminino" && j.grupo === "D"; }).forEach(function (j) {
+      if (j.status !== "sem_placar") {
+        append_(placaresSheet_(), [agora, j.semana, j.categoria, j.grupo, String(j.jogo), "anular", "Organização", "", "", "", "Jogo cancelado por decisão do grupo (22/10): será jogado de novo."]);
+        n++;
+      }
+      if (j.coringa) { guardarLinha_(j.semana, j.key, "Jogo", "coringa", ""); c++; }
+    });
+    msg.push("Feminino, Grupo D: " + n + " placar(es) apagado(s) e " + c + " coringa(s) removido(s).");
+    append_(configSheet_(), ["ajuste_22out", agora]);
+    SpreadsheetApp.flush();
+  } finally { lock.releaseLock(); }
+  return msg.join(" ");
 }
 /** Faz o sorteio da semana corrente, se já passou da hora e ele ainda não existe. */
 function sorteioSeDevido_() {
@@ -275,7 +326,7 @@ function doGet(e) {
     if (nextStart <= st.now) nextStart += 7 * n * DIA;
     return json_({
       ok: true, agora: new Date(st.now).toISOString(),
-      semanas: st.weeks.map(function (w) { return { id: w.id, inicio: w.inicio, prazo: w.prazo, metodo: w.method, rodada: w.rodada, randomness: w.randomness, assinatura: w.assinatura, listas: w.lists, sorteio: w.draw }; }),
+      semanas: st.weeks.map(function (w) { return { id: w.id, inicio: w.inicio, prazo: w.prazo, metodo: w.method, rodada: w.rodada, randomness: w.randomness, assinatura: w.assinatura, listas: w.lists, sorteio: w.draw, sorteado: w.sorteado, extras: w.extras }; }),
       jogos: st.jogos.map(publicJogo_),
       ranking: ranking_(st.jogos),
       proximo: weekMeta_(nextStart, n),

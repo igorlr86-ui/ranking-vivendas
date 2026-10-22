@@ -265,6 +265,7 @@
         + games.map(function (j) { return gameRow(j); }).join("") + "</article>";
     }).join("") + "</div>";
     if (d.byes && d.byes.length) html += '<p class="byes"><b>De folga nesta rodada:</b> ' + d.byes.map(esc).join(", ") + ".</p>";
+    if (w.extras && w.extras[S.cat]) html += '<p class="small cornote">' + esc(w.extras[S.cat]) + "</p>";
     html += '<p class="small muted">Cada jogador marca seus horários livres na aba “Meus jogos”, e o grupo vê aqui quando os quatro podem. Lá também se marca o dia e a hora do jogo, com aviso por e-mail. Quem ganha lança o placar; um dos que perderam confirma.</p>';
     return html;
   }
@@ -410,6 +411,7 @@
       return '<section class="panel"><div class="spread"><h3>Rodada de ' + fmtDate(w.inicio) + "</h3>" + (ck ? '<span class="pill ' + (ck.ok ? "ok" : ck.ok === false ? "bad" : "") + '">' + esc(ck.label) + "</span>" : "") + "</div>"
         + '<dl class="facts"><dt>Rodada</dt><dd class="num">' + w.rodada.toLocaleString("pt-BR") + ' · <a href="' + Sorteio.drandUrl(w.rodada) + '" target="_blank" rel="noopener">ver no drand</a></dd><dt>Número</dt><dd class="mono">' + esc(w.randomness) + "</dd><dt>Método</dt><dd>" + (w.metodo === "v1" ? "Grupos na ordem do sorteio (1ª rodada)" : "Sem repetir quem já jogou junto") + "</dd></dl>"
         + (ck && ck.msg ? '<p class="small">' + esc(ck.msg) + "</p>" : "")
+        + (w.extras ? Object.keys(w.extras).map(function (c) { return '<p class="small muted"><b>' + esc(c) + ":</b> " + esc(w.extras[c]) + " A conferência vale para os grupos sorteados.</p>"; }).join("") : "")
         + '<div class="row"><button class="btn ghost" type="button" data-act="check" data-w="' + esc(w.id) + '">Conferir este sorteio</button></div></section>';
     }).join("");
     return html;
@@ -422,7 +424,7 @@
       if (!Sorteio.beaconOk(b.randomness, b.signature)) { S.checks[id] = { ok: false, label: "Não confere", msg: "A assinatura do número não bate." }; return render(); }
       var prev = all.slice(0, idx).map(function (x) { return { id: x.id, draw: x.sorteio }; });
       var d = Sorteio.drawWeek({ method: w.metodo, lists: w.listas, randomness: b.randomness }, prev);
-      var mine = Sorteio.fingerprint(d), theirs = Sorteio.fingerprint({ Feminino: norm(w.sorteio.Feminino), Masculino: norm(w.sorteio.Masculino), Mista: norm(w.sorteio.Mista) });
+      var mine = Sorteio.fingerprint(d), so = w.sorteado || w.sorteio, theirs = Sorteio.fingerprint({ Feminino: norm(so.Feminino), Masculino: norm(so.Masculino), Mista: norm(so.Mista) });
       S.checks[id] = mine === theirs ? { ok: true, label: "Confere", msg: "O número veio direto do drand e a conta feita no seu celular deu exatamente os mesmos grupos e folgas." }
         : { ok: false, label: "Não confere", msg: "A conta no seu celular deu grupos diferentes dos publicados. Avise a organização." };
       render();
