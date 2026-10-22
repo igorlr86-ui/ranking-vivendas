@@ -165,8 +165,8 @@ function ajustarPrazoAtual_(cfg) {
 /* Grupos incluídos pela organização depois do sorteio. Ficam fora da conferência do sorteio
    (que confere só o que saiu do número público) e entram no histórico para os próximos sorteios. */
 var GRUPOS_EXTRAS = {
-  "2026-10-19": { Feminino: { grupos: [["Geruza", "Patricia", "Maria Eduarda Barbieri", "Alicia"]],
-    nota: "O Grupo E foi incluído pela organização em 22/10, com a entrada da Geruza no ranking: ela joga com as três que estavam de folga. Os grupos A a D são os do sorteio." } }
+  "2026-10-19": { Feminino: { grupos: [["Jerusa", "Patricia", "Maria Eduarda Barbieri", "Alicia"]],
+    nota: "O Grupo E foi incluído pela organização em 22/10, com a entrada da Jerusa no ranking: ela joga com as três que estavam de folga. Os grupos A a D são os do sorteio." } }
 };
 function comExtras_(id, draw) {
   var ex = GRUPOS_EXTRAS[id]; if (!ex) return draw;
@@ -192,7 +192,7 @@ function semanas_() {
 }
 
 /* ================= ajuste de 22/10/2026 (rodar uma vez no Apps Script) ================= */
-// Inclui a Geruza (Feminino e Mista) e cancela os 3 jogos do Feminino, Grupo D, da rodada de 19/10,
+// Inclui a Jerusa (Feminino e Mista) e cancela os 3 jogos do Feminino, Grupo D, da rodada de 19/10,
 // que serão jogados de novo: apaga os placares lançados e o coringa marcado.
 function ajustes22out() {
   var cfg = config_();
@@ -200,11 +200,11 @@ function ajustes22out() {
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   var msg = [];
   try {
-    if (!jogadores_().some(function (p) { return p.nome === "Geruza"; })) {
+    if (!jogadores_().some(function (p) { return p.nome === "Jerusa"; })) {
       var sh = jogadoresSheet_(), head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
-      sh.appendRow(head.map(function (h) { return h === "Jogador" ? "Geruza" : h === "Categorias" ? "Feminino, Mista" : h === "Sexo" ? "F" : ""; }));
-      msg.push("Geruza incluída (Feminino e Mista).");
-    } else msg.push("Geruza já estava na lista.");
+      sh.appendRow(head.map(function (h) { return h === "Jogador" ? "Jerusa" : h === "Categorias" ? "Feminino, Mista" : h === "Sexo" ? "F" : ""; }));
+      msg.push("Jerusa incluída (Feminino e Mista).");
+    } else msg.push("Jerusa já estava na lista.");
     var st = estadoCompleto_(), agora = new Date().toISOString(), n = 0, c = 0;
     st.jogos.filter(function (j) { return j.semana === "2026-10-19" && j.categoria === "Feminino" && j.grupo === "D"; }).forEach(function (j) {
       if (j.status !== "sem_placar") {
