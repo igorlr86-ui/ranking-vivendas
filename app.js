@@ -45,8 +45,18 @@
     if (!CFG.apiUrl) { S.err = "O app ainda está sendo configurado. Volte em breve."; render(); return Promise.resolve(); }
     return fetch(CFG.apiUrl + "?acao=estado", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok) throw new Error(d.erro || "Erro ao carregar.");
-      S.data = d; S.err = null; S.loadedAt = Date.now(); render();
+      S.data = d; S.err = null; S.loadedAt = Date.now(); corrigeMe(); render();
     }).catch(function (e) { S.err = "Não foi possível carregar o ranking agora. Confira a internet e tente de novo. (" + e.message + ")"; render(); });
+  }
+  // Nomes corrigidos na planilha: quem estava conectado com o nome antigo passa para o novo.
+  var NOMES_CORRIGIDOS = { "Geruza": "Jerusa", "Maisa": "Maiza" };
+  function corrigeMe() {
+    if (!S.me || S.me.admin || !S.data || !S.data.jogadores) return;
+    var nomes = S.data.jogadores.map(function (j) { return j.nome; });
+    if (nomes.indexOf(S.me.nome) >= 0) return;
+    var novo = NOMES_CORRIGIDOS[S.me.nome];
+    if (novo && nomes.indexOf(novo) >= 0) S.me.nome = novo; else S.me = null;
+    saveMe();
   }
   function post(body) {
     return fetch(CFG.apiUrl, { method: "POST", body: JSON.stringify(body) }).then(function (r) { return r.json(); }).then(function (d) {

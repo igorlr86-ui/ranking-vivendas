@@ -427,12 +427,80 @@ function notasExtras_(id) {
   Object.keys(ex).forEach(function (c) { o[c] = ex[c].nota; });
   return o;
 }
+/* Nomes corrigidos depois do sorteio. As listas e o sorteio gravados ficam com a grafia original
+   (é com ela que a conferência do sorteio refaz a conta); os grupos e os jogos usam o nome certo. */
+var NOMES_CORRIGIDOS = { "Geruza": "Jerusa", "Maisa": "Maiza" };
+function nomeCerto_(n) { return NOMES_CORRIGIDOS[n] || n; }
+function corrigeNomes_(draw) {
+  var out = {};
+  Object.keys(draw).forEach(function (c) {
+    var d = draw[c];
+    out[c] = { groups: (d.groups || []).map(function (g) { return (g.players || g).map(nomeCerto_); }), byes: (d.byes || []).map(nomeCerto_) };
+    if (d.repeats !== undefined) out[c].repeats = d.repeats;
+  });
+  return out;
+}
 function semanas_() {
   return rows_(semanasSheet_()).map(function (r) {
     var sorteado = JSON.parse(r.sorteio || "{}");
     return { id: r.id, inicio: r.inicio, prazo: r.prazo, method: r.metodo, rodada: Number(r.rodada), randomness: r.randomness,
-      assinatura: r.assinatura, lists: JSON.parse(r.listas || "{}"), draw: comExtras_(r.id, sorteado), sorteado: sorteado, extras: notasExtras_(r.id) };
+      assinatura: r.assinatura, lists: JSON.parse(r.listas || "{}"), draw: corrigeNomes_(comExtras_(r.id, sorteado)), sorteado: sorteado, extras: notasExtras_(r.id) };
   }).sort(function (a, b) { return a.id < b.id ? -1 : 1; });
+}
+
+/* ================= ajuste de 27/10/2026 (rodar uma vez no Apps Script) ================= */
+// Geruza → Jerusa (só Feminino). Maisa e Maiza são a mesma pessoa: fica uma linha só, Maiza, no Feminino e na Mista,
+// com o código que já existir. Corrige também os nomes já gravados em Placares e Dados.
+function ajustes27out() {
+  var cfg = config_();
+  if (cfg.ajuste_27out) return "Este ajuste já foi feito em " + cfg.ajuste_27out + ". Nada foi alterado.";
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  var msg = [];
+  try {
+    var sh = jogadoresSheet_(), v = sh.getDataRange().getValues(), head = v[0].map(String);
+    var iN = head.indexOf("Jogador"), iC = head.indexOf("Categorias"), linha = {};
+    for (var r = 1; r < v.length; r++) linha[norm_(v[r][iN])] = r;
+    if (linha["Geruza"] !== undefined && linha["Jerusa"] === undefined) {
+      sh.getRange(linha["Geruza"] + 1, iN + 1).setValue("Jerusa");
+      sh.getRange(linha["Geruza"] + 1, iC + 1).setValue("Feminino");
+      msg.push("Geruza agora é Jerusa, só no Feminino (código e e-mail mantidos).");
+    } else if (linha["Jerusa"] !== undefined) {
+      sh.getRange(linha["Jerusa"] + 1, iC + 1).setValue("Feminino");
+      msg.push("Jerusa já estava com o nome certo; ficou só no Feminino.");
+    }
+    if (linha["Maisa"] !== undefined) {
+      if (linha["Maiza"] !== undefined) {
+        var colunas = ["Código", "Código criado em", "E-mail", "Sexo"], rz = linha["Maiza"] + 1, rs = linha["Maisa"] + 1;
+        colunas.forEach(function (h) {
+          var ci = head.indexOf(h); if (ci < 0) return;
+          if (!norm_(v[rz - 1][ci]) && norm_(v[rs - 1][ci])) sh.getRange(rz, ci + 1).setValue("'" + norm_(v[rs - 1][ci]));
+        });
+        sh.getRange(rz, iC + 1).setValue("Feminino, Mista");
+        sh.deleteRow(rs);
+        msg.push("Maisa e Maiza viraram uma só: Maiza, no Feminino e na Mista.");
+      } else {
+        sh.getRange(linha["Maisa"] + 1, iN + 1).setValue("Maiza");
+        msg.push("Maisa agora é Maiza.");
+      }
+    }
+    var trocas = 0;
+    [placaresSheet_(), dadosSheet_()].forEach(function (s2) {
+      var d = s2.getDataRange().getValues(), h2 = d[0].map(String), ij = h2.indexOf("jogador"), iv = h2.indexOf("valor");
+      for (var k = 1; k < d.length; k++) {
+        var j = norm_(d[k][ij]);
+        if (NOMES_CORRIGIDOS[j]) { s2.getRange(k + 1, ij + 1).setValue("'" + NOMES_CORRIGIDOS[j]); trocas++; }
+        if (iv >= 0) {
+          var val = String(d[k][iv]), novo = val;
+          Object.keys(NOMES_CORRIGIDOS).forEach(function (a) { novo = novo.split('"' + a + '"').join('"' + NOMES_CORRIGIDOS[a] + '"'); });
+          if (novo !== val) { s2.getRange(k + 1, iv + 1).setValue("'" + novo); trocas++; }
+        }
+      }
+    });
+    if (trocas) msg.push(trocas + " registro(s) antigo(s) com o nome corrigido.");
+    append_(configSheet_(), ["ajuste_27out", new Date().toISOString()]);
+    SpreadsheetApp.flush();
+  } finally { lock.releaseLock(); }
+  return msg.join(" ") || "Nada a corrigir.";
 }
 
 /* ================= ajuste de 22/10/2026 (rodar uma vez no Apps Script) ================= */
