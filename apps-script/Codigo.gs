@@ -364,7 +364,7 @@ function gravarJogador_(nome, coluna, valor) {
 function emailValido_(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 120; }
 function listasAtuais_() {
   var js = jogadores_(), has = function (p, c) { return p.categorias.indexOf(c) >= 0; };
-  var by = function (f) { return js.filter(f).map(function (p) { return p.nome; }).sort(); };
+  var by = function (f) { return js.filter(f).map(function (p) { return nomeCerto_(p.nome); }).sort(); };
   return {
     Feminino: by(function (p) { return has(p, "Feminino"); }),
     Masculino: by(function (p) { return has(p, "Masculino"); }),
